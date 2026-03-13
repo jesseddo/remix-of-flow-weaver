@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useMemo } from "react";
 import { ScenarioData, ScenarioNode, OutcomeNode } from "@/types/scenario";
 import { ScenarioCard, OutcomeCard } from "./NodeCard";
 import FlowConnections from "./FlowConnections";
@@ -86,6 +86,24 @@ const NodeCanvas = ({ scenario }: NodeCanvasProps) => {
 
   const totalNodes = 1 + outcomeNodes.length;
 
+  const SCENARIO_CARD_W = 500;
+  const OUTCOME_CARD_H = 260;
+  const STEP_HEIGHT_ESTIMATE = 220;
+
+  const canvasSize = useMemo(() => {
+    const scenarioCardHeight =
+      120 + (scenarioNode.steps?.length ?? 0) * STEP_HEIGHT_ESTIMATE;
+    const maxY = Math.max(
+      scenarioNode.position.y + scenarioCardHeight,
+      ...outcomeNodes.map((n) => n.position.y + OUTCOME_CARD_H)
+    );
+    const maxX = Math.max(
+      scenarioNode.position.x + SCENARIO_CARD_W,
+      ...outcomeNodes.map((n) => n.position.x + 220)
+    );
+    return { width: maxX + 200, height: maxY + 200 };
+  }, [scenarioNode, outcomeNodes]);
+
   return (
     <div
       ref={containerRef}
@@ -110,8 +128,8 @@ const NodeCanvas = ({ scenario }: NodeCanvasProps) => {
         style={{
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           transformOrigin: "0 0",
-          width: 2400,
-          height: 1000,
+          width: canvasSize.width,
+          height: canvasSize.height,
         }}
       >
         <FlowConnections scenarioNode={scenarioNode} outcomeNodes={outcomeNodes} />

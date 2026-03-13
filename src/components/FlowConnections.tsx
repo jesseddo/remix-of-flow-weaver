@@ -134,7 +134,7 @@ const FlowConnections = ({
     <svg
       ref={svgRef}
       className="absolute inset-0 w-full h-full pointer-events-none"
-      style={{ zIndex: 20 }}
+      style={{ zIndex: 20, overflow: "visible" }}
     >
       <defs>
         {(["safe_path", "partial_failure", "critical_failure", "default"] as const).map((t) => (
