@@ -4,6 +4,8 @@ import originalJson from "@/data/scenarios.json";
 import scriptJson from "@/data/scenarios-script.json";
 import { transformScenario, JsonScenario } from "@/data/transformScenario";
 
+export type DisplayMode = "steps" | "grouped";
+
 const sources = [
   { key: "original", label: "Original", data: originalJson as JsonScenario[] },
   { key: "script", label: "Script (V3)", data: scriptJson as JsonScenario[] },
@@ -11,6 +13,7 @@ const sources = [
 
 const Index = () => {
   const [sourceKey, setSourceKey] = useState(sources[0].key);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("steps");
 
   const availableScenarios = useMemo(() => {
     const src = sources.find((s) => s.key === sourceKey)!;
@@ -66,6 +69,25 @@ const Index = () => {
           ))}
         </div>
 
+        {/* Display mode toggle */}
+        <div className="flex rounded-lg border border-border bg-background shadow-sm overflow-hidden">
+          {([["steps", "Steps"], ["grouped", "Grouped Steps"]] as const).map(
+            ([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => setDisplayMode(mode)}
+                className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+                  displayMode === mode
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ),
+          )}
+        </div>
+
         {/* Scenario dropdown */}
         {availableScenarios.length > 1 && (
           <select
@@ -83,7 +105,7 @@ const Index = () => {
       </div>
 
       {scenarioData ? (
-        <NodeCanvas key={activeId} scenario={scenarioData} />
+        <NodeCanvas key={activeId} scenario={scenarioData} displayMode={displayMode} />
       ) : (
         <div className="flex items-center justify-center h-screen text-muted-foreground">
           Could not parse selected scenario
