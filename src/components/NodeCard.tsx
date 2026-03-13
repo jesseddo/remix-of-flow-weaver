@@ -153,7 +153,7 @@ export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick }: Scenari
         )}
       </div>
 
-      <div className="p-4 space-y-2 max-h-[600px] overflow-y-auto">
+      <div className="p-4 space-y-2">
         {node.steps?.map((step, index) => (
           <div key={step.id}>
             <StepRow step={step} index={index} />
