@@ -90,13 +90,21 @@ const StepRow = ({ step, index }: { step: ScenarioStep; index: number }) => {
                 </span>
                 {dp.connections && dp.connections.length > 0 && (
                   <div
-                    className="absolute -right-[7px] top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border-2 border-background"
+                    data-dp-id={`${index}-${i}`}
+                    className="absolute -right-[10px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-background"
                     style={{
                       background: dp.connections.some(c => c.type === "failure")
                         ? "hsl(0, 72%, 55%)"
                         : dp.connections.some(c => c.type === "success")
                         ? "hsl(160, 60%, 45%)"
                         : "hsl(220, 15%, 75%)",
+                      boxShadow: `0 0 0 2px ${
+                        dp.connections.some(c => c.type === "failure")
+                          ? "hsla(0, 72%, 55%, 0.3)"
+                          : dp.connections.some(c => c.type === "success")
+                          ? "hsla(160, 60%, 45%, 0.3)"
+                          : "hsla(220, 15%, 75%, 0.3)"
+                      }`,
                     }}
                   />
                 )}

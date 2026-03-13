@@ -1,4 +1,5 @@
-import { ScenarioNode, OutcomeNode, ScenarioStep } from "@/types/scenario";
+import { useRef, useLayoutEffect, useEffect, useState } from "react";
+import { ScenarioNode, OutcomeNode } from "@/types/scenario";
 
 interface FlowConnectionsProps {
   scenarioNode: ScenarioNode;
@@ -8,22 +9,18 @@ interface FlowConnectionsProps {
 const SCENARIO_W = 500;
 const OUTCOME_H = 260;
 
-const HEADER_H = 60;
-const CONTENT_PADDING = 16;
-
 const getColor = (type: "success" | "failure" | "default") => {
   if (type === "success") return "hsl(160, 60%, 45%)";
   if (type === "failure") return "hsl(0, 72%, 55%)";
   return "hsl(220, 15%, 75%)";
 };
 
-const getMarkerId = (type: "success" | "failure" | "default") => {
-  return `arrow-${type}`;
-};
+const getMarkerId = (type: "success" | "failure" | "default") => `arrow-${type}`;
 
 interface Line {
-  x1: number;
-  y1: number;
+  dotX: number;
+  dotY: number;
+  exitX: number;
   x2: number;
   y2: number;
   color: string;
@@ -31,85 +28,178 @@ interface Line {
   type: "success" | "failure" | "default";
 }
 
-const calculateDecisionPointY = (stepIndex: number, decisionPointIndex: number, step: ScenarioStep): number => {
-  let cumulativeY = HEADER_H + CONTENT_PADDING;
-
-  for (let i = 0; i < stepIndex; i++) {
-    cumulativeY += 140;
-  }
-
-  const stepCardPadding = 12;
-  const titleRowHeight = 28;
-  const descriptionHeight = 40;
-  const decisionPointsLabelHeight = 0;
-  const decisionPointHeight = 26;
-
-  cumulativeY += stepCardPadding + titleRowHeight + descriptionHeight + decisionPointsLabelHeight;
-  cumulativeY += (decisionPointIndex * decisionPointHeight) + (decisionPointHeight / 2);
-
-  return cumulativeY;
+const linesMatch = (a: Line[], b: Line[]): boolean => {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (l, i) =>
+      Math.abs(l.dotX - b[i].dotX) < 0.5 &&
+      Math.abs(l.dotY - b[i].dotY) < 0.5 &&
+      Math.abs(l.x2 - b[i].x2) < 0.5 &&
+      Math.abs(l.y2 - b[i].y2) < 0.5
+  );
 };
 
-const FlowConnections = ({ scenarioNode, outcomeNodes }: FlowConnectionsProps) => {
-  const outcomeMap = new Map(outcomeNodes.map((n) => [n.id, n]));
-  const lines: Line[] = [];
+const FlowConnections = ({
+  scenarioNode,
+  outcomeNodes,
+}: FlowConnectionsProps) => {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [, setTick] = useState(0);
 
-  scenarioNode.steps?.forEach((step: ScenarioStep, stepIndex: number) => {
-    step.decisionPoints?.forEach((dp, dpIndex) => {
-      if (!dp.connections) return;
+  const measureRef = useRef(() => {});
+  measureRef.current = () => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
 
-      dp.connections.forEach((connection) => {
-        const target = outcomeMap.get(connection.targetNodeId);
-        if (!target) return;
+    const svgRect = svgEl.getBoundingClientRect();
+    if (svgRect.width === 0 || svgRect.height === 0) return;
 
-        const x1 = scenarioNode.position.x + SCENARIO_W;
-        const y1 = scenarioNode.position.y + calculateDecisionPointY(stepIndex, dpIndex, step);
+    const scaleX = svgEl.clientWidth / svgRect.width;
+    const scaleY = svgEl.clientHeight / svgRect.height;
+    if (!isFinite(scaleX) || !isFinite(scaleY)) return;
 
-        const x2 = target.position.x;
-        const y2 = target.position.y + OUTCOME_H / 2;
+    const outcomeMap = new Map(outcomeNodes.map((n) => [n.id, n]));
+    const newLines: Line[] = [];
+    const exitX = scenarioNode.position.x + SCENARIO_W;
 
-        lines.push({
-          x1,
-          y1,
-          x2,
-          y2,
-          color: getColor(connection.type),
-          label: connection.label,
-          type: connection.type
+    scenarioNode.steps?.forEach((step, stepIndex) => {
+      step.decisionPoints?.forEach((dp, dpIndex) => {
+        if (!dp.connections) return;
+
+        const dotEl = document.querySelector(
+          `[data-dp-id="${stepIndex}-${dpIndex}"]`
+        );
+        if (!dotEl) return;
+
+        const dotRect = dotEl.getBoundingClientRect();
+        const dotX =
+          (dotRect.left + dotRect.width / 2 - svgRect.left) * scaleX;
+        const dotY =
+          (dotRect.top + dotRect.height / 2 - svgRect.top) * scaleY;
+
+        dp.connections.forEach((connection) => {
+          const target = outcomeMap.get(connection.targetNodeId);
+          if (!target) return;
+
+          newLines.push({
+            dotX,
+            dotY,
+            exitX,
+            x2: target.position.x,
+            y2: target.position.y + OUTCOME_H / 2,
+            color: getColor(connection.type),
+            label: connection.label,
+            type: connection.type,
+          });
         });
       });
     });
+
+    setLines((prev) => (linesMatch(prev, newLines) ? prev : newLines));
+  };
+
+  // Re-measure on every render to catch layout shifts.
+  // linesMatch prevents infinite re-render loops.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    measureRef.current();
   });
 
+  // Re-measure after fonts finish loading, on window resize,
+  // and periodically during mount to catch late layout shifts.
+  useEffect(() => {
+    const bump = () => setTick((n) => n + 1);
+
+    document.fonts.ready.then(bump);
+    window.addEventListener("resize", bump);
+
+    const t1 = setTimeout(bump, 100);
+    const t2 = setTimeout(bump, 500);
+
+    return () => {
+      window.removeEventListener("resize", bump);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
+
   return (
-    <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 20 }}>
+    <svg
+      ref={svgRef}
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      style={{ zIndex: 20 }}
+    >
       <defs>
-        <marker id="arrow-success" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <marker
+          id="arrow-success"
+          markerWidth="8"
+          markerHeight="6"
+          refX="8"
+          refY="3"
+          orient="auto"
+        >
           <path d="M0,0 L8,3 L0,6" fill="hsl(160,60%,45%)" />
         </marker>
-        <marker id="arrow-failure" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <marker
+          id="arrow-failure"
+          markerWidth="8"
+          markerHeight="6"
+          refX="8"
+          refY="3"
+          orient="auto"
+        >
           <path d="M0,0 L8,3 L0,6" fill="hsl(0,72%,55%)" />
         </marker>
-        <marker id="arrow-default" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <marker
+          id="arrow-default"
+          markerWidth="8"
+          markerHeight="6"
+          refX="8"
+          refY="3"
+          orient="auto"
+        >
           <path d="M0,0 L8,3 L0,6" fill="hsl(220,15%,75%)" />
         </marker>
       </defs>
+
       {lines.map((line, i) => {
-        const midX = (line.x1 + line.x2) / 2;
+        const midX = (line.exitX + line.x2) / 2;
         const markerId = getMarkerId(line.type);
-        const labelY = (line.y1 + line.y2) / 2;
+        const labelY = (line.dotY + line.y2) / 2;
         const labelWidth = Math.max(180, line.label.length * 5);
 
         return (
           <g key={i}>
+            <circle
+              cx={line.dotX}
+              cy={line.dotY}
+              r={8}
+              fill="none"
+              stroke={line.color}
+              strokeWidth={1.5}
+              opacity={0.4}
+            />
+
+            <line
+              x1={line.dotX}
+              y1={line.dotY}
+              x2={line.exitX}
+              y2={line.dotY}
+              stroke={line.color}
+              strokeWidth={2}
+              strokeDasharray={line.type === "failure" ? "6 4" : undefined}
+            />
+
             <path
-              d={`M${line.x1},${line.y1} C${midX},${line.y1} ${midX},${line.y2} ${line.x2},${line.y2}`}
+              d={`M${line.exitX},${line.dotY} C${midX},${line.dotY} ${midX},${line.y2} ${line.x2},${line.y2}`}
               fill="none"
               stroke={line.color}
               strokeWidth={2.5}
               strokeDasharray={line.type === "failure" ? "6 4" : undefined}
               markerEnd={`url(#${markerId})`}
             />
+
             <rect
               x={midX - labelWidth / 2}
               y={labelY - 10}
