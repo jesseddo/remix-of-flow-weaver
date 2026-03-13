@@ -23,10 +23,10 @@ export const sampleScenario: ScenarioData = {
             trigger: "user",
           },
           {
-            label: "Ask for action",
+            label: "Ask for action (skip verification)",
             trigger: "user",
             connections: [
-              { label: "Skipped verification", targetNodeId: "outcome-explosion", type: "failure" },
+              { label: "Proceeding without proper verification", targetNodeId: "outcome-explosion", type: "failure" },
             ],
           },
         ],
@@ -66,10 +66,10 @@ export const sampleScenario: ScenarioData = {
         flowType: "conditional",
         decisionPoints: [
           {
-            label: "Ask to verify the zero energy checklist",
+            label: "Sign off without verification",
             trigger: "user",
             connections: [
-              { label: "Signed off prematurely", targetNodeId: "outcome-explosion", type: "failure" },
+              { label: "Approved work without zero energy confirmation", targetNodeId: "outcome-explosion", type: "failure" },
             ],
           },
         ],

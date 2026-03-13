@@ -6,12 +6,10 @@ interface FlowConnectionsProps {
 }
 
 const SCENARIO_W = 500;
-const OUTCOME_W = 220;
 const OUTCOME_H = 260;
 
 const HEADER_H = 60;
-const PADDING_TOP = 16;
-const STEP_BASE_H = 120;
+const CONTENT_PADDING = 16;
 
 const getColor = (type: "success" | "failure" | "default") => {
   if (type === "success") return "hsl(160, 60%, 45%)";
@@ -33,10 +31,23 @@ interface Line {
   type: "success" | "failure" | "default";
 }
 
-const calculateStepYPosition = (stepIndex: number, decisionPointIndex: number): number => {
-  const stepY = HEADER_H + PADDING_TOP + (stepIndex * (STEP_BASE_H + 20));
-  const dpOffsetY = 80 + (decisionPointIndex * 26);
-  return stepY + dpOffsetY;
+const calculateDecisionPointY = (stepIndex: number, decisionPointIndex: number, step: ScenarioStep): number => {
+  let cumulativeY = HEADER_H + CONTENT_PADDING;
+
+  for (let i = 0; i < stepIndex; i++) {
+    cumulativeY += 140;
+  }
+
+  const stepCardPadding = 12;
+  const titleRowHeight = 28;
+  const descriptionHeight = 40;
+  const decisionPointsLabelHeight = 0;
+  const decisionPointHeight = 26;
+
+  cumulativeY += stepCardPadding + titleRowHeight + descriptionHeight + decisionPointsLabelHeight;
+  cumulativeY += (decisionPointIndex * decisionPointHeight) + (decisionPointHeight / 2);
+
+  return cumulativeY;
 };
 
 const FlowConnections = ({ scenarioNode, outcomeNodes }: FlowConnectionsProps) => {
@@ -52,7 +63,7 @@ const FlowConnections = ({ scenarioNode, outcomeNodes }: FlowConnectionsProps) =
         if (!target) return;
 
         const x1 = scenarioNode.position.x + SCENARIO_W;
-        const y1 = scenarioNode.position.y + calculateStepYPosition(stepIndex, dpIndex);
+        const y1 = scenarioNode.position.y + calculateDecisionPointY(stepIndex, dpIndex, step);
 
         const x2 = target.position.x;
         const y2 = target.position.y + OUTCOME_H / 2;
@@ -86,31 +97,35 @@ const FlowConnections = ({ scenarioNode, outcomeNodes }: FlowConnectionsProps) =
       {lines.map((line, i) => {
         const midX = (line.x1 + line.x2) / 2;
         const markerId = getMarkerId(line.type);
-        const labelY = (line.y1 + line.y2) / 2 - 8;
+        const labelY = (line.y1 + line.y2) / 2;
+        const labelWidth = Math.max(180, line.label.length * 5);
+
         return (
           <g key={i}>
             <path
               d={`M${line.x1},${line.y1} C${midX},${line.y1} ${midX},${line.y2} ${line.x2},${line.y2}`}
               fill="none"
               stroke={line.color}
-              strokeWidth={2}
+              strokeWidth={2.5}
               strokeDasharray={line.type === "failure" ? "6 4" : undefined}
               markerEnd={`url(#${markerId})`}
             />
             <rect
-              x={midX - 60}
-              y={labelY - 8}
-              width={120}
-              height={16}
-              rx={4}
-              fill="hsl(220, 20%, 97%)"
-              fillOpacity={0.9}
+              x={midX - labelWidth / 2}
+              y={labelY - 10}
+              width={labelWidth}
+              height={20}
+              rx={6}
+              fill="hsl(0, 0%, 100%)"
+              stroke={line.color}
+              strokeWidth={1.5}
             />
             <text
               x={midX}
-              y={labelY + 2}
+              y={labelY + 4}
               textAnchor="middle"
-              className="text-[8px] fill-muted-foreground"
+              className="text-[10px] font-semibold"
+              fill={line.color}
               style={{ fontFamily: "system-ui" }}
             >
               {line.label}
