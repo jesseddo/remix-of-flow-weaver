@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { ScenarioNode, OutcomeNode, ScenarioStep } from "@/types/scenario";
 import { MessageSquare, Radio, FileText, Video, User, Zap, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, ChevronDown } from "lucide-react";
 import type { OutcomeType } from "@/types/scenario";
+import type { DisplayMode } from "@/pages/Index";
 
 const outcomeStyles: Record<OutcomeType, {
   bg: string;
@@ -85,6 +87,7 @@ interface ScenarioCardProps {
   isSelected: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
   onClick: (e: React.MouseEvent) => void;
+  displayMode: DisplayMode;
 }
 
 interface OutcomeCardProps {
@@ -193,7 +196,76 @@ const StepRow = ({ step, index }: { step: ScenarioStep; index: number }) => {
   );
 };
 
-export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick }: ScenarioCardProps) => {
+const GroupedTriggersView = ({ node }: { node: ScenarioNode }) => {
+  const [hoveredStepIndex, setHoveredStepIndex] = useState<number | null>(null);
+
+  return (
+    <div className="p-4">
+      {node.steps?.map((step, stepIndex) => {
+        const triggers = step.decisionPoints;
+        if (!triggers || triggers.length === 0) return null;
+
+        const isStepHovered = hoveredStepIndex === stepIndex;
+
+        return (
+          <div
+            key={step.id}
+            className="transition-all duration-150"
+            style={{
+              background: isStepHovered ? "hsl(var(--primary) / 0.05)" : "transparent",
+              boxShadow: isStepHovered ? "inset 0 0 0 1px hsl(var(--primary) / 0.12)" : "none",
+              borderRadius: "0.5rem",
+              padding: "2px",
+              margin: "-2px",
+              marginBottom: "2px",
+            }}
+          >
+            {triggers.map((dp, dpIndex) => (
+              <div
+                key={dpIndex}
+                className="flex items-center gap-2 text-[10px] text-card-foreground bg-secondary/60 rounded-md px-2 py-1.5 relative mb-1 last:mb-0"
+                onMouseEnter={() => setHoveredStepIndex(stepIndex)}
+                onMouseLeave={() => setHoveredStepIndex(null)}
+              >
+                {dp.trigger === "user" ? (
+                  <User className="w-2.5 h-2.5 text-primary shrink-0" />
+                ) : (
+                  <Zap className="w-2.5 h-2.5 text-node-warning shrink-0" />
+                )}
+                <span className="leading-tight text-[10px]">{dp.label}</span>
+                <span
+                  className={`ml-auto text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded ${
+                    dp.trigger === "user"
+                      ? "bg-primary/10 text-primary"
+                      : "bg-node-warning/15 text-node-warning"
+                  }`}
+                >
+                  {dp.trigger}
+                </span>
+                {dp.connections && dp.connections.length > 0 && (() => {
+                  const dotType = dp.connections[0].type;
+                  const dot = connectionDotColor(dotType);
+                  return (
+                    <div
+                      data-dp-id={`${stepIndex}-${dpIndex}`}
+                      className="absolute -right-[10px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-background"
+                      style={{
+                        background: dot.bg,
+                        boxShadow: `0 0 0 2px ${dot.shadow}`,
+                      }}
+                    />
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMode }: ScenarioCardProps) => {
   const borderColor = isSelected
     ? "ring-2 ring-primary"
     : "hover:ring-1 hover:ring-primary/40";
@@ -217,18 +289,22 @@ export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick }: Scenari
         )}
       </div>
 
-      <div className="p-4 space-y-2">
-        {node.steps?.map((step, index) => (
-          <div key={step.id}>
-            <StepRow step={step} index={index} />
-            {index < (node.steps?.length || 0) - 1 && (
-              <div className="flex justify-center py-2">
-                <div className="w-0.5 h-4 bg-gradient-to-b from-primary/30 to-primary/10" />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+      {displayMode === "grouped" ? (
+        <GroupedTriggersView node={node} />
+      ) : (
+        <div className="p-4 space-y-2">
+          {node.steps?.map((step, index) => (
+            <div key={step.id}>
+              <StepRow step={step} index={index} />
+              {index < (node.steps?.length || 0) - 1 && (
+                <div className="flex justify-center py-2">
+                  <div className="w-0.5 h-4 bg-gradient-to-b from-primary/30 to-primary/10" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

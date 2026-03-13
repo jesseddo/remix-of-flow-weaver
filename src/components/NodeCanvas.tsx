@@ -2,14 +2,16 @@ import { useRef, useState, useCallback, useMemo } from "react";
 import { ScenarioData, ScenarioNode, OutcomeNode } from "@/types/scenario";
 import { ScenarioCard, OutcomeCard } from "./NodeCard";
 import FlowConnections from "./FlowConnections";
+import type { DisplayMode } from "@/pages/Index";
 
 interface NodeCanvasProps {
   scenario: ScenarioData;
+  displayMode: DisplayMode;
 }
 
 type DraggableNode = ScenarioNode | OutcomeNode;
 
-const NodeCanvas = ({ scenario }: NodeCanvasProps) => {
+const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -139,6 +141,7 @@ const NodeCanvas = ({ scenario }: NodeCanvasProps) => {
           isSelected={selectedNodeId === scenarioNode.id}
           onMouseDown={(e) => handleNodeMouseDown(scenarioNode, e)}
           onClick={(e) => handleNodeClick(scenarioNode.id, e)}
+          displayMode={displayMode}
         />
 
         {outcomeNodes.map((node) => (
