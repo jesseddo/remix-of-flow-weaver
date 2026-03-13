@@ -66,6 +66,10 @@ export const sampleScenario: ScenarioData = {
         flowType: "conditional",
         decisionPoints: [
           {
+            label: "Ask Tom to verify zero energy",
+            trigger: "user",
+          },
+          {
             label: "Sign off without verification",
             trigger: "user",
             connections: [
