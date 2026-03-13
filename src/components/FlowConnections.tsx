@@ -23,6 +23,22 @@ const getMarkerId = (type: ConnectionType) => `arrow-${type}`;
 const isDashed = (type: ConnectionType) =>
   type === "partial_failure" || type === "critical_failure";
 
+const cubicBezier = (
+  t: number,
+  p0: number,
+  p1: number,
+  p2: number,
+  p3: number,
+) => {
+  const mt = 1 - t;
+  return (
+    mt * mt * mt * p0 +
+    3 * mt * mt * t * p1 +
+    3 * mt * t * t * p2 +
+    t * t * t * p3
+  );
+};
+
 interface Line {
   dotX: number;
   dotY: number;
@@ -32,6 +48,8 @@ interface Line {
   color: string;
   label: string;
   type: ConnectionType;
+  labelT: number;
+  ctrlXOffset: number;
 }
 
 const linesMatch = (a: Line[], b: Line[]): boolean => {
@@ -97,8 +115,35 @@ const FlowConnections = ({
             color: getColor(connection.type),
             label: connection.label,
             type: connection.type,
+            labelT: 0.5,
+            ctrlXOffset: 0,
           });
         });
+      });
+    });
+
+    const targetGroups = new Map<string, number[]>();
+    newLines.forEach((line, idx) => {
+      const key = `${Math.round(line.x2)},${Math.round(line.y2)}`;
+      if (!targetGroups.has(key)) targetGroups.set(key, []);
+      targetGroups.get(key)!.push(idx);
+    });
+
+    targetGroups.forEach((indices) => {
+      if (indices.length <= 1) return;
+
+      indices.sort((a, b) => newLines[a].dotY - newLines[b].dotY);
+
+      const n = indices.length;
+      const ARRIVAL_SPREAD = 22;
+      const LABEL_T_RANGE = 0.14;
+      const CTRL_X_OFFSET = 14;
+
+      indices.forEach((idx, j) => {
+        const frac = j - (n - 1) / 2;
+        newLines[idx].y2 += frac * ARRIVAL_SPREAD;
+        newLines[idx].ctrlXOffset = frac * CTRL_X_OFFSET;
+        newLines[idx].labelT = 0.5 + frac * LABEL_T_RANGE;
       });
     });
 
@@ -153,9 +198,13 @@ const FlowConnections = ({
       </defs>
 
       {lines.map((line, i) => {
-        const midX = (line.exitX + line.x2) / 2;
+        const baseMidX = (line.exitX + line.x2) / 2;
+        const ctrlX = baseMidX + line.ctrlXOffset;
         const markerId = getMarkerId(line.type);
-        const labelY = (line.dotY + line.y2) / 2;
+
+        const t = line.labelT;
+        const labelX = cubicBezier(t, line.exitX, ctrlX, ctrlX, line.x2);
+        const labelY = cubicBezier(t, line.dotY, line.dotY, line.y2, line.y2);
         const labelWidth = Math.max(180, line.label.length * 5);
 
         return (
@@ -181,7 +230,7 @@ const FlowConnections = ({
             />
 
             <path
-              d={`M${line.exitX},${line.dotY} C${midX},${line.dotY} ${midX},${line.y2} ${line.x2},${line.y2}`}
+              d={`M${line.exitX},${line.dotY} C${ctrlX},${line.dotY} ${ctrlX},${line.y2} ${line.x2},${line.y2}`}
               fill="none"
               stroke={line.color}
               strokeWidth={2.5}
@@ -190,7 +239,7 @@ const FlowConnections = ({
             />
 
             <rect
-              x={midX - labelWidth / 2}
+              x={labelX - labelWidth / 2}
               y={labelY - 10}
               width={labelWidth}
               height={20}
@@ -200,7 +249,7 @@ const FlowConnections = ({
               strokeWidth={1.5}
             />
             <text
-              x={midX}
+              x={labelX}
               y={labelY + 4}
               textAnchor="middle"
               className="text-[10px] font-semibold"
