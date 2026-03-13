@@ -25,6 +25,9 @@ export const sampleScenario: ScenarioData = {
           {
             label: "Ask for action",
             trigger: "user",
+            connections: [
+              { label: "Skipped verification", targetNodeId: "outcome-explosion", type: "failure" },
+            ],
           },
         ],
       },
