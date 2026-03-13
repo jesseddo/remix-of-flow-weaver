@@ -1,0 +1,297 @@
+[
+  {
+    "id": "p101-v3",
+    "title": "P-101 Isobutane Pump Recommissioning",
+    "description": "Isobutane scenario simulation experience. Learner navigates a 4-step energy isolation sign-off process, interacting with Mike (Control Room) and Tom (at machinery), verifying controls, reviewing documents, and validating safeguards before approving work.",
+    "status": "available",
+    "version": "V3",
+    "difficulty": "advanced",
+    "duration": "45-60 min",
+    "subject": "P-101 Isobutane Pump",
+    "unit": "Isobutane Processing Unit",
+    "media": [
+      {
+        "type": "video-intro",
+        "url": "/videos/p101-isobutane-phase/intro.mp4"
+      },
+      {
+        "type": "video-simulation",
+        "url": "/videos/p101-isobutane-phase/simulation.mp4"
+      },
+      {
+        "type": "video-outcome-safe-operation",
+        "url": "/videos/p101-isobutane-phase/outcome-safe-operation.mp4"
+      },
+      {
+        "type": "video-outcome-explosive-release",
+        "url": "/videos/p101-isobutane-phase/outcome-explosive-release.mp4"
+      },
+      {
+        "type": "video-outcome-harmful-gas",
+        "url": "/videos/p101-isobutane-phase/outcome-harmful-gas.mp4"
+      }
+    ],
+    "team": [
+      {
+        "name": "Mike",
+        "role": "Control Room Operator",
+        "description": "Operator stationed in the control room. Requests sign-off to start work and reports on 5 of 6 controls/safeguards checked prior to energy isolation — omitting Zero energy state control/verification."
+      },
+      {
+        "name": "Tom",
+        "role": "Field Operator (at the machinery)",
+        "description": "Operator stationed at the machinery. Initiates a radio call requesting permission to begin energy isolation work, and assists with final walkthrough and safeguard validation."
+      },
+      {
+        "name": "Coach",
+        "role": "Coach (Facilitator)",
+        "description": "Guides scenario. Provides prompts and responds to your decisions throughout the scenario to help guide your learning experience."
+      }
+    ],
+    "sceneResources": [
+      {
+        "title": "Start Work Check (SWC) Form",
+        "type": "Document",
+        "description": "Mandatory checklist for verifying safety controls/safeguards before signing off to start work. Includes verification items for energy isolation activities.",
+        "url": "https://oe-ffl-chat.vercel.app/SWC.pdf"
+      },
+      {
+        "title": "Isolation List - P-101 (LOTO)",
+        "type": "Document",
+        "description": "Complete list of all isolation points, locks, and tags for P-101 pump. Used for final safeguard verification including bleed valve testing.",
+        "url": "https://oe-ffl-chat.vercel.app/LOTO.pdf"
+      }
+    ],
+    "outcomes": [
+      {
+        "id": "outcome-safe-operation",
+        "title": "Safe Operation",
+        "outcomeType": "safe_path",
+        "description": "Excellent work! You correctly requested the Start Work Check form, identified the missing zero energy state verification, refused to approve work prematurely, requested the isolation list, and verified the bleed valve before signing off. All safeguards were properly validated before work commenced."
+      },
+      {
+        "id": "outcome-explosive-release",
+        "title": "Explosive Release",
+        "outcomeType": "critical_failure",
+        "description": "Critical safety failure. By signing off to start work without first requesting and reviewing the Start Work Check form — or by approving Tom's request without proper verification — energy isolation safeguards were not confirmed. This resulted in an explosive release of isobutane."
+      },
+      {
+        "id": "outcome-harmful-gas",
+        "title": "Harmful Gas Released",
+        "outcomeType": "partial_failure",
+        "description": "Safety failure. Although you may have requested the isolation list, you approved work without verifying the bleed valve. The bleed valve had not been properly tested and residual pressure remained in the system, resulting in a harmful gas release when work commenced."
+      }
+    ],
+    "scenes": [
+      {
+        "id": "scene-step-1-request-to-start-work",
+        "title": "Step 1: Request to Start Work",
+        "description": "Learner speaks with Mike who's at the control room; Mike would like to get the sign off to start work. If asked to review the controls/safeguards checked prior to energy isolation activities, Mike speaks of 5 controls that were checked, and misses out on Zero energy state control/verification.",
+        "type": "text-chat",
+        "persona": "Mike",
+        "tasks": [
+          {
+            "id": "A1_T1",
+            "label": "Asks for Start Work Check Form",
+            "required": true
+          },
+          {
+            "id": "A1_T2",
+            "label": "Signs off to start work",
+            "required": false
+          }
+        ],
+        "interruptions": [
+          {
+            "id": "A1_S1",
+            "type": "radio",
+            "description": "Radio interruption"
+          }
+        ],
+        "evaluation": {
+          "competency": "Safety Compliance / Situational Awareness",
+          "weight": "high",
+          "requirement": "Explicitly request the 'Start Work Check form'"
+        },
+        "triggers": [
+          {
+            "id": "trigger-form-requested",
+            "type": "task-complete",
+            "description": "Learner requests the Start Work Check Form",
+            "criteria": "A1_T1 completed: Learner explicitly asks for the Start Work Check form before signing off",
+            "target_id": "scene-step-2-review-swc-form"
+          },
+          {
+            "id": "trigger-signoff-without-form",
+            "type": "task-skip",
+            "description": "Learner signs off without requesting the form",
+            "criteria": "A1_T1 skipped, A1_T2 done: Learner attempts to sign off to start work without first requesting the Start Work Check form",
+            "target_id": "outcome-explosive-release"
+          },
+          {
+            "id": "trigger-timeout-step-1",
+            "type": "timeout",
+            "description": "No task completed within time limit",
+            "criteria": "No task completed within 2 minutes",
+            "timeout_ms": 120000,
+            "target_id": "scene-step-3-radio-request"
+          }
+        ]
+      },
+      {
+        "id": "scene-step-2-review-swc-form",
+        "title": "Step 2: Review Start Work Check Form",
+        "description": "Learner reviews and checks off verified controls from the Start Work Check Form. Mike reported 5 controls checked but omitted Zero energy state control — learner should only check off the 5 verified controls and NOT check off zero energy state.",
+        "type": "document-review",
+        "resource": "Start Work Check (SWC) Form",
+        "tasks": [
+          {
+            "id": "A2_T1",
+            "label": "Checks off verified controls in Start Work Check Form and exits form",
+            "required": true
+          }
+        ],
+        "interruptions": [
+          {
+            "id": "A2_S1",
+            "type": "radio",
+            "description": "Radio interruption"
+          }
+        ],
+        "evaluation": {
+          "competency": "Risk Assessment",
+          "weight": "medium",
+          "requirement": "Learner checks off only the verified controls; did not check off zero energy state control"
+        },
+        "triggers": [
+          {
+            "id": "trigger-form-reviewed",
+            "type": "task-complete",
+            "description": "Learner completes the form review",
+            "criteria": "A2_T1 completed: Learner checks off verified controls and exits the form",
+            "target_id": "scene-step-3-radio-request"
+          },
+          {
+            "id": "trigger-timeout-step-2",
+            "type": "timeout",
+            "description": "No task completed within time limit",
+            "criteria": "No task completed within 2 minutes",
+            "timeout_ms": 120000,
+            "target_id": "scene-step-3-radio-request"
+          }
+        ]
+      },
+      {
+        "id": "scene-step-3-radio-request",
+        "title": "Step 3: Remote Request for Sign Off and Start Work",
+        "description": "Learner gets radio call from Tom requesting to start energy isolation work.",
+        "type": "radio-call",
+        "persona": "Tom",
+        "tasks": [
+          {
+            "id": "A3_T1",
+            "label": "Refuses to approve request",
+            "required": true
+          },
+          {
+            "id": "A3_T2",
+            "label": "Requests walkthrough",
+            "required": true
+          }
+        ],
+        "evaluation": {
+          "competency": "Decision Making",
+          "weight": "high",
+          "requirement": "Learner must not sign off; they must request a walkthrough"
+        },
+        "triggers": [
+          {
+            "id": "trigger-refused-and-walkthrough",
+            "type": "task-complete",
+            "description": "Learner refuses and requests walkthrough",
+            "criteria": "A3_T1 and A3_T2 completed: Learner refuses to approve the request and requests a walkthrough of the isolation points",
+            "target_id": "scene-step-4-final-validation"
+          },
+          {
+            "id": "trigger-approved-request",
+            "type": "task-fail",
+            "description": "Learner approves the request without refusing/walkthrough",
+            "criteria": "A3_T1 not done correctly (i.e. approves the request): Learner approves Tom's request to start work without refusing or requesting a walkthrough",
+            "target_id": "outcome-explosive-release"
+          }
+        ]
+      },
+      {
+        "id": "scene-step-4-final-validation",
+        "title": "Step 4: Final Validation & Sign-off",
+        "description": "Tom checks the pressure gauge and it shows '0'. Learner requests for the isolation list and conducts proper control/safeguard verification on the bleed valve before finally signing off to start work when everything is checked and safe.",
+        "type": "text-chat",
+        "resource": "Isolation List - P-101 (LOTO)",
+        "persona": "Tom",
+        "tasks": [
+          {
+            "id": "A4_T1",
+            "label": "Requests isolation list",
+            "required": true
+          },
+          {
+            "id": "A4_T2",
+            "label": "Requests to test bleed valve",
+            "required": true
+          },
+          {
+            "id": "A4_T3",
+            "label": "Approves request to start work",
+            "required": true
+          }
+        ],
+        "evaluation": {
+          "competency": "Administrative Completion",
+          "weight": "low",
+          "requirement": "Use the Document Review type to sign off"
+        },
+        "triggers": [
+          {
+            "id": "trigger-full-validation",
+            "type": "task-complete",
+            "description": "All validation steps completed before approval",
+            "criteria": "A4_T1, A4_T2, and A4_T3 all completed: Learner requests isolation list, tests bleed valve, then approves work",
+            "target_id": "outcome-safe-operation"
+          },
+          {
+            "id": "trigger-approve-only",
+            "type": "task-incomplete",
+            "description": "Learner approves without isolation list or bleed valve test",
+            "criteria": "A4_T3 only done: Learner approves work without requesting isolation list or testing bleed valve",
+            "target_id": "outcome-harmful-gas"
+          },
+          {
+            "id": "trigger-approve-without-bleed-test",
+            "type": "task-incomplete",
+            "description": "Learner requests isolation list but skips bleed valve test",
+            "criteria": "A4_T1 and A4_T3 done without A4_T2: Learner requests isolation list but approves work without testing bleed valve",
+            "target_id": "outcome-harmful-gas"
+          }
+        ]
+      },
+      {
+        "id": "outcome-safe-operation",
+        "title": "Safe Operation",
+        "description": "Positive outcome — learner verified all safeguards, tested the bleed valve, and confirmed zero energy state before approving work.",
+        "triggers": []
+      },
+      {
+        "id": "outcome-explosive-release",
+        "title": "Explosive Release",
+        "description": "Negative outcome — learner signed off without reviewing the Start Work Check form, or approved work prematurely without a proper walkthrough.",
+        "triggers": []
+      },
+      {
+        "id": "outcome-harmful-gas",
+        "title": "Harmful Gas Released",
+        "description": "Negative outcome — learner approved work without verifying the bleed valve, resulting in harmful gas release.",
+        "triggers": []
+      }
+    ]
+  }
+]

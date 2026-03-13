@@ -9,13 +9,19 @@ interface FlowConnectionsProps {
 const SCENARIO_W = 500;
 const OUTCOME_H = 260;
 
-const getColor = (type: "success" | "failure" | "default") => {
-  if (type === "success") return "hsl(160, 60%, 45%)";
-  if (type === "failure") return "hsl(0, 72%, 55%)";
+type ConnectionType = "safe_path" | "partial_failure" | "critical_failure" | "default";
+
+const getColor = (type: ConnectionType) => {
+  if (type === "safe_path") return "hsl(160, 60%, 45%)";
+  if (type === "partial_failure") return "hsl(40, 80%, 42%)";
+  if (type === "critical_failure") return "hsl(0, 72%, 55%)";
   return "hsl(220, 15%, 75%)";
 };
 
-const getMarkerId = (type: "success" | "failure" | "default") => `arrow-${type}`;
+const getMarkerId = (type: ConnectionType) => `arrow-${type}`;
+
+const isDashed = (type: ConnectionType) =>
+  type === "partial_failure" || type === "critical_failure";
 
 interface Line {
   dotX: number;
@@ -25,7 +31,7 @@ interface Line {
   y2: number;
   color: string;
   label: string;
-  type: "success" | "failure" | "default";
+  type: ConnectionType;
 }
 
 const linesMatch = (a: Line[], b: Line[]): boolean => {
@@ -131,36 +137,19 @@ const FlowConnections = ({
       style={{ zIndex: 20 }}
     >
       <defs>
-        <marker
-          id="arrow-success"
-          markerWidth="8"
-          markerHeight="6"
-          refX="8"
-          refY="3"
-          orient="auto"
-        >
-          <path d="M0,0 L8,3 L0,6" fill="hsl(160,60%,45%)" />
-        </marker>
-        <marker
-          id="arrow-failure"
-          markerWidth="8"
-          markerHeight="6"
-          refX="8"
-          refY="3"
-          orient="auto"
-        >
-          <path d="M0,0 L8,3 L0,6" fill="hsl(0,72%,55%)" />
-        </marker>
-        <marker
-          id="arrow-default"
-          markerWidth="8"
-          markerHeight="6"
-          refX="8"
-          refY="3"
-          orient="auto"
-        >
-          <path d="M0,0 L8,3 L0,6" fill="hsl(220,15%,75%)" />
-        </marker>
+        {(["safe_path", "partial_failure", "critical_failure", "default"] as const).map((t) => (
+          <marker
+            key={t}
+            id={`arrow-${t}`}
+            markerWidth="8"
+            markerHeight="6"
+            refX="8"
+            refY="3"
+            orient="auto"
+          >
+            <path d="M0,0 L8,3 L0,6" fill={getColor(t)} />
+          </marker>
+        ))}
       </defs>
 
       {lines.map((line, i) => {
@@ -188,7 +177,7 @@ const FlowConnections = ({
               y2={line.dotY}
               stroke={line.color}
               strokeWidth={2}
-              strokeDasharray={line.type === "failure" ? "6 4" : undefined}
+              strokeDasharray={isDashed(line.type) ? "6 4" : undefined}
             />
 
             <path
@@ -196,7 +185,7 @@ const FlowConnections = ({
               fill="none"
               stroke={line.color}
               strokeWidth={2.5}
-              strokeDasharray={line.type === "failure" ? "6 4" : undefined}
+              strokeDasharray={isDashed(line.type) ? "6 4" : undefined}
               markerEnd={`url(#${markerId})`}
             />
 

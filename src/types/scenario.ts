@@ -1,11 +1,11 @@
 export type NodeType = "chat" | "radio" | "document" | "video";
-export type OutcomeType = "success" | "failure";
+export type OutcomeType = "safe_path" | "partial_failure" | "critical_failure";
 export type TriggerType = "user" | "system";
 
 export interface StepConnection {
   label: string;
   targetNodeId: string;
-  type: "success" | "failure" | "default";
+  type: "safe_path" | "partial_failure" | "critical_failure" | "default";
 }
 
 export interface DecisionPoint {

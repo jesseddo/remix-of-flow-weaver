@@ -1,5 +1,67 @@
 import { ScenarioNode, OutcomeNode, ScenarioStep } from "@/types/scenario";
-import { MessageSquare, Radio, FileText, Video, User, Zap, CircleCheck as CheckCircle2, Circle as XCircle, ChevronDown } from "lucide-react";
+import { MessageSquare, Radio, FileText, Video, User, Zap, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, ChevronDown } from "lucide-react";
+import type { OutcomeType } from "@/types/scenario";
+
+const outcomeStyles: Record<OutcomeType, {
+  bg: string;
+  border: string;
+  iconBg: string;
+  titleColor: string;
+  badgeBg: string;
+  badgeColor: string;
+  labelColor: string;
+  label: string;
+}> = {
+  safe_path: {
+    bg: "linear-gradient(135deg, hsl(145, 65%, 96%), hsl(145, 65%, 92%))",
+    border: "hsl(145, 65%, 42%)",
+    iconBg: "hsl(145, 65%, 42%)",
+    titleColor: "hsl(145, 65%, 25%)",
+    badgeBg: "hsl(145, 65%, 42%, 0.15)",
+    badgeColor: "hsl(145, 65%, 30%)",
+    labelColor: "hsl(145, 65%, 35%)",
+    label: "Safe Path",
+  },
+  partial_failure: {
+    bg: "linear-gradient(135deg, hsl(40, 80%, 96%), hsl(40, 80%, 90%))",
+    border: "hsl(40, 80%, 42%)",
+    iconBg: "hsl(40, 80%, 42%)",
+    titleColor: "hsl(40, 80%, 22%)",
+    badgeBg: "hsl(40, 80%, 42%, 0.15)",
+    badgeColor: "hsl(40, 80%, 30%)",
+    labelColor: "hsl(40, 80%, 35%)",
+    label: "Partial Failure",
+  },
+  critical_failure: {
+    bg: "linear-gradient(135deg, hsl(0, 72%, 97%), hsl(0, 72%, 93%))",
+    border: "hsl(0, 72%, 55%)",
+    iconBg: "hsl(0, 72%, 55%)",
+    titleColor: "hsl(0, 72%, 35%)",
+    badgeBg: "hsl(0, 72%, 55%, 0.15)",
+    badgeColor: "hsl(0, 72%, 40%)",
+    labelColor: "hsl(0, 72%, 45%)",
+    label: "Critical Failure",
+  },
+};
+
+const OutcomeIcon = ({ outcome }: { outcome: OutcomeType }) => {
+  const className = "w-6 h-6";
+  const style = { color: "white" };
+  switch (outcome) {
+    case "safe_path": return <CheckCircle2 className={className} style={style} />;
+    case "partial_failure": return <AlertTriangle className={className} style={style} />;
+    case "critical_failure": return <XCircle className={className} style={style} />;
+  }
+};
+
+const connectionDotColor = (type: string): { bg: string; shadow: string } => {
+  switch (type) {
+    case "critical_failure": return { bg: "hsl(0, 72%, 55%)", shadow: "hsla(0, 72%, 55%, 0.3)" };
+    case "partial_failure": return { bg: "hsl(40, 80%, 42%)", shadow: "hsla(40, 80%, 42%, 0.3)" };
+    case "safe_path": return { bg: "hsl(160, 60%, 45%)", shadow: "hsla(160, 60%, 45%, 0.3)" };
+    default: return { bg: "hsl(220, 15%, 75%)", shadow: "hsla(220, 15%, 75%, 0.3)" };
+  }
+};
 
 const typeConfig: Record<
   string,
@@ -88,26 +150,20 @@ const StepRow = ({ step, index }: { step: ScenarioStep; index: number }) => {
                 >
                   {dp.trigger}
                 </span>
-                {dp.connections && dp.connections.length > 0 && (
-                  <div
-                    data-dp-id={`${index}-${i}`}
-                    className="absolute -right-[10px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-background"
-                    style={{
-                      background: dp.connections.some(c => c.type === "failure")
-                        ? "hsl(0, 72%, 55%)"
-                        : dp.connections.some(c => c.type === "success")
-                        ? "hsl(160, 60%, 45%)"
-                        : "hsl(220, 15%, 75%)",
-                      boxShadow: `0 0 0 2px ${
-                        dp.connections.some(c => c.type === "failure")
-                          ? "hsla(0, 72%, 55%, 0.3)"
-                          : dp.connections.some(c => c.type === "success")
-                          ? "hsla(160, 60%, 45%, 0.3)"
-                          : "hsla(220, 15%, 75%, 0.3)"
-                      }`,
-                    }}
-                  />
-                )}
+                {dp.connections && dp.connections.length > 0 && (() => {
+                  const dotType = dp.connections[0].type;
+                  const dot = connectionDotColor(dotType);
+                  return (
+                    <div
+                      data-dp-id={`${index}-${i}`}
+                      className="absolute -right-[10px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-background"
+                      style={{
+                        background: dot.bg,
+                        boxShadow: `0 0 0 2px ${dot.shadow}`,
+                      }}
+                    />
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -178,7 +234,7 @@ export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick }: Scenari
 };
 
 export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick }: OutcomeCardProps) => {
-  const isSuccess = node.outcome === "success";
+  const style = outcomeStyles[node.outcome];
 
   return (
     <div
@@ -190,10 +246,8 @@ export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick }: OutcomeC
         left: node.position.x,
         top: node.position.y,
         zIndex: isSelected ? 10 : 1,
-        background: isSuccess
-          ? "linear-gradient(135deg, hsl(145, 65%, 96%), hsl(145, 65%, 92%))"
-          : "linear-gradient(135deg, hsl(0, 72%, 97%), hsl(0, 72%, 93%))",
-        border: `2px solid ${isSuccess ? "hsl(145, 65%, 42%)" : "hsl(0, 72%, 55%)"}`,
+        background: style.bg,
+        border: `2px solid ${style.border}`,
       }}
       onMouseDown={onMouseDown}
       onClick={onClick}
@@ -201,30 +255,21 @@ export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick }: OutcomeC
       <div className="p-5 flex flex-col items-center text-center gap-3">
         <div
           className="w-12 h-12 rounded-full flex items-center justify-center"
-          style={{
-            background: isSuccess ? "hsl(145, 65%, 42%)" : "hsl(0, 72%, 55%)",
-          }}
+          style={{ background: style.iconBg }}
         >
-          {isSuccess ? (
-            <CheckCircle2 className="w-6 h-6" style={{ color: "white" }} />
-          ) : (
-            <XCircle className="w-6 h-6" style={{ color: "white" }} />
-          )}
+          <OutcomeIcon outcome={node.outcome} />
         </div>
 
         <h3
           className="font-bold text-sm leading-tight"
-          style={{ color: isSuccess ? "hsl(145, 65%, 25%)" : "hsl(0, 72%, 35%)" }}
+          style={{ color: style.titleColor }}
         >
           {node.title}
         </h3>
 
         <span
           className="flex items-center gap-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full"
-          style={{
-            background: isSuccess ? "hsl(145, 65%, 42%, 0.15)" : "hsl(0, 72%, 55%, 0.15)",
-            color: isSuccess ? "hsl(145, 65%, 30%)" : "hsl(0, 72%, 40%)",
-          }}
+          style={{ background: style.badgeBg, color: style.badgeColor }}
         >
           <Video className="w-3 h-3" />
           Video
@@ -236,9 +281,9 @@ export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick }: OutcomeC
 
         <span
           className="text-xs font-bold uppercase tracking-wider"
-          style={{ color: isSuccess ? "hsl(145, 65%, 35%)" : "hsl(0, 72%, 45%)" }}
+          style={{ color: style.labelColor }}
         >
-          {isSuccess ? "Success" : "Failure"}
+          {style.label}
         </span>
       </div>
     </div>
