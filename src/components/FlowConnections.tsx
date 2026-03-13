@@ -1,16 +1,17 @@
-import { ScenarioNode } from "@/types/scenario";
+import { ScenarioNode, OutcomeNode, ScenarioStep } from "@/types/scenario";
 
 interface FlowConnectionsProps {
-  nodes: ScenarioNode[];
+  scenarioNode: ScenarioNode;
+  outcomeNodes: OutcomeNode[];
 }
 
-const CARD_W = 300;
+const SCENARIO_W = 500;
 const OUTCOME_W = 220;
+const OUTCOME_H = 260;
 
-// Approximate Y offset for each decision point within a step card
-// Layout: stripe(6) + padding(16) + title(20) + gap(12) + persona(16) + gap(12) + description(48) + gap(12) + label(16) + gap(6)
-const DP_BASE_Y = 6 + 16 + 20 + 12 + 16 + 12 + 48 + 12 + 16 + 6;
-const DP_ROW_H = 32;
+const HEADER_H = 60;
+const PADDING_TOP = 16;
+const STEP_BASE_H = 120;
 
 const getColor = (type: "success" | "failure" | "default") => {
   if (type === "success") return "hsl(160, 60%, 45%)";
@@ -32,51 +33,40 @@ interface Line {
   type: "success" | "failure" | "default";
 }
 
-const FlowConnections = ({ nodes }: FlowConnectionsProps) => {
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+const calculateStepYPosition = (stepIndex: number, decisionPointIndex: number): number => {
+  const stepY = HEADER_H + PADDING_TOP + (stepIndex * (STEP_BASE_H + 20));
+  const dpOffsetY = 80 + (decisionPointIndex * 26);
+  return stepY + dpOffsetY;
+};
+
+const FlowConnections = ({ scenarioNode, outcomeNodes }: FlowConnectionsProps) => {
+  const outcomeMap = new Map(outcomeNodes.map((n) => [n.id, n]));
   const lines: Line[] = [];
 
-  nodes.forEach((node) => {
-    const isOutcome = !!node.outcome;
-    const cardW = isOutcome ? OUTCOME_W : CARD_W;
+  scenarioNode.steps?.forEach((step: ScenarioStep, stepIndex: number) => {
+    step.decisionPoints?.forEach((dp, dpIndex) => {
+      if (!dp.connections) return;
 
-    // Lines from decision points
-    if (node.decisionPoints) {
-      node.decisionPoints.forEach((dp, dpIndex) => {
-        if (!dp.branches) return;
-        dp.branches.forEach((branch) => {
-          const target = nodeMap.get(branch.targetNodeId);
-          if (!target) return;
+      dp.connections.forEach((connection) => {
+        const target = outcomeMap.get(connection.targetNodeId);
+        if (!target) return;
 
-          const x1 = node.position.x + cardW;
-          const y1 = node.position.y + DP_BASE_Y + dpIndex * DP_ROW_H + DP_ROW_H / 2;
+        const x1 = scenarioNode.position.x + SCENARIO_W;
+        const y1 = scenarioNode.position.y + calculateStepYPosition(stepIndex, dpIndex);
 
-          const targetIsOutcome = !!target.outcome;
-          const targetW = targetIsOutcome ? OUTCOME_W : CARD_W;
-          const targetH = targetIsOutcome ? 260 : 300;
-          const x2 = target.position.x;
-          const y2 = target.position.y + targetH / 2;
+        const x2 = target.position.x;
+        const y2 = target.position.y + OUTCOME_H / 2;
 
-          lines.push({ x1, y1, x2, y2, color: getColor(branch.type), label: branch.label, type: branch.type });
+        lines.push({
+          x1,
+          y1,
+          x2,
+          y2,
+          color: getColor(connection.type),
+          label: connection.label,
+          type: connection.type
         });
       });
-    }
-
-    // Lines from node-level branches (for nodes without decision points, like "Skipped Verification")
-    node.branches.forEach((branch) => {
-      const target = nodeMap.get(branch.targetNodeId);
-      if (!target) return;
-
-      const x1 = node.position.x + cardW;
-      const cardH = isOutcome ? 260 : 300;
-      const y1 = node.position.y + cardH / 2;
-
-      const targetIsOutcome = !!target.outcome;
-      const targetH = targetIsOutcome ? 260 : 300;
-      const x2 = target.position.x;
-      const y2 = target.position.y + targetH / 2;
-
-      lines.push({ x1, y1, x2, y2, color: getColor(branch.type), label: branch.label, type: branch.type });
     });
   });
 
@@ -96,7 +86,6 @@ const FlowConnections = ({ nodes }: FlowConnectionsProps) => {
       {lines.map((line, i) => {
         const midX = (line.x1 + line.x2) / 2;
         const markerId = getMarkerId(line.type);
-        // Offset label Y slightly for overlapping lines
         const labelY = (line.y1 + line.y2) / 2 - 8;
         return (
           <g key={i}>

@@ -2,7 +2,7 @@ export type NodeType = "chat" | "radio" | "document" | "video";
 export type OutcomeType = "success" | "failure";
 export type TriggerType = "user" | "system";
 
-export interface DecisionPointBranch {
+export interface StepConnection {
   label: string;
   targetNodeId: string;
   type: "success" | "failure" | "default";
@@ -11,16 +11,10 @@ export interface DecisionPointBranch {
 export interface DecisionPoint {
   label: string;
   trigger: TriggerType;
-  branches?: DecisionPointBranch[];
+  connections?: StepConnection[];
 }
 
-export interface FlowBranch {
-  label: string;
-  targetNodeId: string;
-  type: "success" | "failure" | "default";
-}
-
-export interface ScenarioNode {
+export interface ScenarioStep {
   id: string;
   title: string;
   type: NodeType;
@@ -28,13 +22,29 @@ export interface ScenarioNode {
   description: string;
   tags: string[];
   flowType: "conditional" | "gated" | "linear" | "interruption";
-  branches: FlowBranch[];
   decisionPoints?: DecisionPoint[];
-  outcome?: OutcomeType;
+}
+
+export interface ScenarioNode {
+  id: string;
+  title: string;
+  description?: string;
+  steps?: ScenarioStep[];
+  position: { x: number; y: number };
+}
+
+export interface OutcomeNode {
+  id: string;
+  title: string;
+  type: NodeType;
+  description: string;
+  tags: string[];
+  outcome: OutcomeType;
   position: { x: number; y: number };
 }
 
 export interface ScenarioData {
   title: string;
-  nodes: ScenarioNode[];
+  scenarioNode: ScenarioNode;
+  outcomeNodes: OutcomeNode[];
 }
