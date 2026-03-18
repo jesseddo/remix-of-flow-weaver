@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { ScenarioNode, OutcomeNode, ScenarioStep } from "@/types/scenario";
-import { MessageSquare, Radio, FileText, Video, User, Zap, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, ChevronDown } from "lucide-react";
+import { ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer } from "@/types/scenario";
+import { MessageSquare, Radio, FileText, Video, User, Zap, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, ChevronDown, Timer, Clock } from "lucide-react";
 import type { OutcomeType } from "@/types/scenario";
 import type { DisplayMode } from "@/pages/Index";
 
@@ -95,6 +95,7 @@ interface OutcomeCardProps {
   isSelected: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
   onClick: (e: React.MouseEvent) => void;
+  spotlightState?: "target" | "dimmed" | "none";
 }
 
 const StepRow = ({ step, index }: { step: ScenarioStep; index: number }) => {
@@ -265,6 +266,332 @@ const GroupedTriggersView = ({ node }: { node: ScenarioNode }) => {
   );
 };
 
+function formatTimeoutMs(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (seconds === 0) return `${minutes} min`;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+interface StepSpotlight {
+  dimmed: boolean;
+  fadedDpIndices: Set<number>;
+}
+
+interface ModalStepCardProps {
+  step: ScenarioStep;
+  stepIndex: number;
+  position: { x: number; y: number };
+  isSelected: boolean;
+  onMouseDown: (e: React.MouseEvent) => void;
+  onClick: (e: React.MouseEvent) => void;
+  spotlight?: StepSpotlight;
+}
+
+export const ModalStepCard = ({
+  step,
+  stepIndex,
+  position,
+  isSelected,
+  onMouseDown,
+  onClick,
+  spotlight,
+}: ModalStepCardProps) => {
+  const cfg = typeConfig[step.type];
+  const Icon = cfg.icon;
+  const isDimmed = spotlight?.dimmed ?? false;
+  const borderColor = isSelected
+    ? "ring-2 ring-primary"
+    : "hover:ring-1 hover:ring-primary/40";
+
+  return (
+    <div
+      data-modal-node={step.id}
+      className={`w-[280px] rounded-lg bg-background shadow-lg overflow-visible transition-all duration-200 ${borderColor} cursor-grab active:cursor-grabbing`}
+      style={{
+        position: "absolute",
+        left: position.x,
+        top: position.y,
+        zIndex: isSelected ? 10 : 1,
+        borderLeft: `3px solid hsl(var(--node-${step.type}))`,
+        borderTop: "1px solid hsl(var(--border))",
+        borderRight: "1px solid hsl(var(--border))",
+        borderBottom: "1px solid hsl(var(--border))",
+        opacity: isDimmed ? 0.1 : 1,
+        pointerEvents: isDimmed ? "none" : undefined,
+      }}
+      onMouseDown={onMouseDown}
+      onClick={onClick}
+    >
+      <div
+        className="px-3 py-2 flex items-center gap-2"
+        style={{
+          background: `hsl(var(--node-${step.type}) / 0.08)`,
+          borderBottom: `1px solid hsl(var(--node-${step.type}) / 0.15)`,
+        }}
+      >
+        <div
+          className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
+          style={{ background: `hsl(var(--node-${step.type}))`, color: "white" }}
+        >
+          {stepIndex + 1}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-[11px] text-card-foreground leading-tight">
+            {step.title}
+          </h4>
+          {step.persona && (
+            <p className="text-[9px] text-muted-foreground">{step.persona}</p>
+          )}
+        </div>
+        <span
+          className="flex items-center gap-1 text-[9px] font-medium shrink-0"
+          style={{ color: `hsl(var(--node-${step.type}))` }}
+        >
+          <Icon className="w-3 h-3" />
+          {cfg.label}
+        </span>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground leading-relaxed px-3 py-1.5">
+        {step.description}
+      </p>
+
+      {/* Tasks */}
+      {step.tasks && step.tasks.length > 0 && (
+        <div className="px-3 pb-1.5 space-y-0.5">
+          <div className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1">
+            Tasks
+          </div>
+          {step.tasks.map((task) => (
+            <div
+              key={task.id}
+              className="flex items-center gap-1.5 text-[9px] rounded px-2 py-1"
+              style={{ background: "hsl(var(--secondary) / 0.5)" }}
+            >
+              <span
+                className="font-mono font-bold shrink-0"
+                style={{ color: "hsl(var(--primary) / 0.75)" }}
+              >
+                {task.id}
+              </span>
+              <span className="text-muted-foreground leading-tight">{task.label}</span>
+              {task.required && (
+                <span
+                  className="ml-auto text-[7px] font-bold uppercase shrink-0 px-1 py-0.5 rounded"
+                  style={{ background: "hsl(var(--primary) / 0.1)", color: "hsl(var(--primary) / 0.8)" }}
+                >
+                  required
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {step.decisionPoints && step.decisionPoints.length > 0 && (
+        <div className="px-3 pb-2 space-y-1">
+          {step.decisionPoints.map((dp, i) => {
+            const isTimeout = dp.trigger === "timeout";
+            const isOutcomeConn = dp.connections && dp.connections.length > 0;
+            const dotType = isOutcomeConn ? dp.connections![0].type : "default";
+            const dot = isOutcomeConn
+              ? connectionDotColor(dotType)
+              : isTimeout
+                ? { bg: "hsl(38, 92%, 50%)", shadow: "hsla(38, 92%, 50%, 0.35)" }
+                : { bg: "hsl(220, 70%, 55%)", shadow: "hsla(220, 70%, 55%, 0.3)" };
+
+            const timeoutLabel = isTimeout && dp.timeoutMs
+              ? formatTimeoutMs(dp.timeoutMs)
+              : null;
+            const isRadioInterruption = isTimeout && dp.interruptionType === "radio";
+            const shortLabel = isRadioInterruption
+              ? (dp.interruptionLabel ?? dp.label)
+              : dp.label;
+            const displayText = dp.criteria ?? shortLabel;
+
+            const isDpFaded = spotlight && !spotlight.dimmed && spotlight.fadedDpIndices.has(i);
+
+            return (
+              <div
+                key={i}
+                title={dp.criteria ? shortLabel : undefined}
+                className={`flex items-center gap-1.5 text-[9px] text-card-foreground rounded px-2 relative transition-opacity duration-200 ${
+                  isRadioInterruption
+                    ? "py-1.5 bg-amber-500/10 border border-amber-400/30"
+                    : isTimeout
+                      ? "py-1 bg-amber-500/10 border border-amber-400/25"
+                      : "py-1 bg-secondary/60"
+                }`}
+                style={{ opacity: isDpFaded ? 0.18 : 1 }}
+              >
+                {isRadioInterruption ? (
+                  /* Radio call interruption: compound icon pair */
+                  <div className="flex items-center shrink-0" style={{ gap: "1px" }}>
+                    <Radio
+                      className="w-3 h-3"
+                      style={{ color: "hsl(38, 92%, 42%)" }}
+                    />
+                    <Timer
+                      className="w-2 h-2"
+                      style={{ color: "hsl(38, 92%, 55%)" }}
+                    />
+                  </div>
+                ) : isTimeout ? (
+                  <Timer className="w-2.5 h-2.5 shrink-0" style={{ color: "hsl(38, 92%, 45%)" }} />
+                ) : dp.trigger === "user" ? (
+                  <User className="w-2.5 h-2.5 text-primary shrink-0" />
+                ) : (
+                  <Zap className="w-2.5 h-2.5 text-node-warning shrink-0" />
+                )}
+
+                <span className={`leading-tight text-[9px] flex-1 break-words ${isTimeout ? "italic" : ""}`}>
+                  {displayText}
+                </span>
+
+                {timeoutLabel ? (
+                  <span
+                    className="text-[8px] font-bold shrink-0 px-1.5 py-0.5 rounded font-mono"
+                    style={{
+                      background: "hsl(38, 92%, 50%, 0.15)",
+                      color: "hsl(38, 92%, 38%)",
+                      border: "1px solid hsl(38, 92%, 50%, 0.3)",
+                    }}
+                  >
+                    {isRadioInterruption ? "📻" : "⏱"} {timeoutLabel}
+                  </span>
+                ) : (
+                  <span
+                    className={`text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded ${
+                      dp.trigger === "user"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-node-warning/15 text-node-warning"
+                    }`}
+                  >
+                    {dp.trigger}
+                  </span>
+                )}
+
+                {(dp.targetStepId || isOutcomeConn) && (
+                  <div
+                    data-modal-dp={`${step.id}-${i}`}
+                    className="absolute -right-[8px] top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-background"
+                    style={{
+                      background: dot.bg,
+                      boxShadow: `0 0 0 2px ${dot.shadow}`,
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface GlobalTimerCardProps {
+  timer: GlobalTimer;
+  position: { x: number; y: number };
+  isSelected: boolean;
+  onMouseDown: (e: React.MouseEvent) => void;
+  onClick: (e: React.MouseEvent) => void;
+}
+
+export const GlobalTimerCard = ({
+  timer,
+  position,
+  isSelected,
+  onMouseDown,
+  onClick,
+}: GlobalTimerCardProps) => {
+  const minutes = Math.floor(timer.timeoutMs / 60000);
+  const seconds = (timer.timeoutMs % 60000) / 1000;
+  const timeLabel = seconds === 0 ? `${minutes} min` : `${minutes}:${String(seconds).padStart(2, "0")}`;
+
+  return (
+    <div
+      data-modal-node={timer.id}
+      className={`w-[220px] rounded-xl cursor-grab active:cursor-grabbing transition-all duration-200 ${
+        isSelected ? "ring-2 ring-violet-400" : "hover:ring-1 hover:ring-violet-400/50"
+      }`}
+      style={{
+        position: "absolute",
+        left: position.x,
+        top: position.y,
+        zIndex: isSelected ? 10 : 3,
+        background: "linear-gradient(135deg, hsl(265, 60%, 98%), hsl(265, 55%, 93%))",
+        border: "2px dashed hsl(265, 65%, 55%)",
+        boxShadow: "0 4px 20px hsla(265, 65%, 55%, 0.2), 0 1px 4px rgba(0,0,0,0.08)",
+      }}
+      onMouseDown={onMouseDown}
+      onClick={onClick}
+    >
+      {/* Header */}
+      <div
+        className="px-3 py-2 flex items-center gap-2"
+        style={{ borderBottom: "1.5px dashed hsl(265, 55%, 72%)" }}
+      >
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+          style={{ background: "hsl(265, 65%, 55%)" }}
+        >
+          <Timer className="w-4 h-4 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div
+            className="text-[8px] font-bold uppercase tracking-widest"
+            style={{ color: "hsl(265, 50%, 42%)" }}
+          >
+            Global Timer
+          </div>
+          <div
+            className="text-[11px] font-semibold leading-tight"
+            style={{ color: "hsl(265, 45%, 22%)" }}
+          >
+            {timer.name}
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="px-3 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(265, 65%, 48%)" }} />
+          <span
+            className="text-[13px] font-bold font-mono tabular-nums"
+            style={{ color: "hsl(265, 55%, 32%)" }}
+          >
+            {timeLabel}
+          </span>
+        </div>
+        <span
+          className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded-full"
+          style={{
+            background: "hsl(265, 65%, 55%, 0.14)",
+            color: "hsl(265, 50%, 36%)",
+            border: "1px solid hsl(265, 65%, 55%, 0.35)",
+          }}
+        >
+          interrupt
+        </span>
+      </div>
+
+      {/* Connector dot */}
+      <div
+        data-modal-dp={`${timer.id}-0`}
+        className="absolute -right-[8px] top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-background"
+        style={{
+          background: "hsl(265, 65%, 55%)",
+          boxShadow: "0 0 0 2px hsla(265, 65%, 55%, 0.35)",
+        }}
+      />
+    </div>
+  );
+};
+
 export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMode }: ScenarioCardProps) => {
   const borderColor = isSelected
     ? "ring-2 ring-primary"
@@ -309,26 +636,44 @@ export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMo
   );
 };
 
-export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick }: OutcomeCardProps) => {
+export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick, spotlightState = "none" }: OutcomeCardProps) => {
   const style = outcomeStyles[node.outcome];
+  const isTarget = spotlightState === "target";
+  const isDimmed = spotlightState === "dimmed";
 
   return (
     <div
-      className={`w-[220px] rounded-2xl shadow-lg overflow-hidden cursor-grab active:cursor-grabbing transition-all ${
-        isSelected ? "ring-2 ring-primary scale-105" : "hover:scale-[1.02]"
+      data-modal-node={node.id}
+      className={`w-[220px] rounded-2xl shadow-lg overflow-hidden cursor-grab active:cursor-grabbing transition-all duration-200 ${
+        isSelected ? "ring-2 ring-primary scale-105" : isTarget ? "" : "hover:scale-[1.02]"
       }`}
       style={{
         position: "absolute",
         left: node.position.x,
         top: node.position.y,
-        zIndex: isSelected ? 10 : 1,
+        zIndex: isSelected ? 10 : isTarget ? 8 : 1,
         background: style.bg,
         border: `2px solid ${style.border}`,
+        opacity: isDimmed ? 0.1 : 1,
+        pointerEvents: isDimmed ? "none" : undefined,
+        boxShadow: isTarget
+          ? `0 0 0 3px ${style.border}, 0 0 24px ${style.border}55, 0 8px 32px rgba(0,0,0,0.15)`
+          : undefined,
+        transform: isTarget ? "scale(1.04)" : undefined,
       }}
       onMouseDown={onMouseDown}
       onClick={onClick}
     >
       <div className="p-5 flex flex-col items-center text-center gap-3">
+        {isTarget && (
+          <div
+            className="absolute top-2 right-2 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full tracking-wider"
+            style={{ background: style.border, color: "white" }}
+          >
+            Spotlit
+          </div>
+        )}
+
         <div
           className="w-12 h-12 rounded-full flex items-center justify-center"
           style={{ background: style.iconBg }}

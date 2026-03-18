@@ -41,7 +41,7 @@ All colors MUST be HSL.
     /* Node type colors */
     --node-chat: 220 70% 50%;
     --node-radio: 160 60% 45%;
-    --node-document: 30 85% 55%;
+    --node-document: 192 70% 40%;
     --node-video: 280 60% 55%;
     --node-success: 145 65% 42%;
     --node-failure: 0 72% 55%;

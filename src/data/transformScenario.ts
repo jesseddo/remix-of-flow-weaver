@@ -1,4 +1,4 @@
-import { ScenarioData, ScenarioStep, OutcomeNode, StepConnection } from "@/types/scenario";
+import { ScenarioData, ScenarioStep, OutcomeNode, StepConnection, GlobalTimer } from "@/types/scenario";
 
 interface JsonTrigger {
   id: string;
@@ -6,6 +6,19 @@ interface JsonTrigger {
   description: string;
   criteria: string;
   target_id: string;
+  timeout_ms?: number;
+}
+
+interface JsonSceneInterruption {
+  id: string;
+  type: string;
+  description: string;
+}
+
+interface JsonSceneTask {
+  id: string;
+  label: string;
+  required: boolean;
 }
 
 interface JsonScene {
@@ -13,6 +26,8 @@ interface JsonScene {
   title: string;
   description: string;
   triggers: JsonTrigger[];
+  tasks?: JsonSceneTask[];
+  interruptions?: JsonSceneInterruption[];
 }
 
 interface JsonOutcome {
@@ -27,6 +42,13 @@ interface JsonTeamMember {
   name: string;
   role: string;
   description: string;
+}
+
+interface JsonGlobalTimer {
+  id: string;
+  name: string;
+  timeout_ms: number;
+  target_id: string;
 }
 
 export interface JsonScenario {
@@ -44,6 +66,7 @@ export interface JsonScenario {
   sceneResources?: { title: string; type: string; description: string; url?: string }[];
   outcomes?: JsonOutcome[];
   scenes?: JsonScene[];
+  globalTimers?: JsonGlobalTimer[];
 }
 
 function inferOutcomeType(scene: JsonScene): "safe_path" | "partial_failure" | "critical_failure" {
@@ -118,6 +141,7 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
   const steps: ScenarioStep[] = stepScenes.map((scene) => {
     const decisionPoints = scene.triggers.map((trigger) => {
       const connections: StepConnection[] = [];
+      let targetStepId: string | undefined;
 
       if (terminalSceneIds.has(trigger.target_id)) {
         const targetScene = json.scenes!.find((s) => s.id === trigger.target_id)!;
@@ -127,12 +151,35 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
           targetNodeId: trigger.target_id,
           type: outcomeType,
         });
+      } else {
+        targetStepId = trigger.target_id;
       }
 
+      const isTimeout = trigger.type === "timeout";
+      const triggerKind = isTimeout ? ("timeout" as const) : ("user" as const);
+
+      // If this is a timeout trigger, check whether the scene has a matching
+      // interruption (e.g. a radio call scheduled to fire during this scene).
+      // The interruption IS the timed event — the timeout is just how long until it fires.
+      const linkedInterruption =
+        isTimeout && scene.interruptions && scene.interruptions.length > 0
+          ? scene.interruptions[0]
+          : undefined;
+
       return {
+        id: trigger.id,
         label: trigger.description,
-        trigger: "user" as const,
+        criteria: trigger.criteria,
+        trigger: triggerKind,
         ...(connections.length > 0 ? { connections } : {}),
+        ...(targetStepId ? { targetStepId } : {}),
+        ...(isTimeout && trigger.timeout_ms ? { timeoutMs: trigger.timeout_ms } : {}),
+        ...(linkedInterruption
+          ? {
+              interruptionType: linkedInterruption.type,
+              interruptionLabel: linkedInterruption.description,
+            }
+          : {}),
       };
     });
 
@@ -144,6 +191,8 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
       description: scene.description,
       tags: inferTags(scene),
       flowType: inferFlowType(scene),
+      tasks: scene.tasks?.map((t) => ({ id: t.id, label: t.label, required: t.required })),
+      interruptions: scene.interruptions?.map((s) => ({ id: s.id, type: s.type, description: s.description })),
       decisionPoints,
     };
   });
@@ -166,6 +215,13 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
     };
   });
 
+  const globalTimers: GlobalTimer[] = (json.globalTimers ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    timeoutMs: t.timeout_ms,
+    targetStepId: t.target_id,
+  }));
+
   return {
     title: json.title,
     scenarioNode: {
@@ -176,5 +232,6 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
       steps,
     },
     outcomeNodes,
+    globalTimers,
   };
 }

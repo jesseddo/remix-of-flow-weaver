@@ -1,6 +1,6 @@
 export type NodeType = "chat" | "radio" | "document" | "video";
 export type OutcomeType = "safe_path" | "partial_failure" | "critical_failure";
-export type TriggerType = "user" | "system";
+export type TriggerType = "user" | "system" | "timeout";
 
 export interface StepConnection {
   label: string;
@@ -9,9 +9,27 @@ export interface StepConnection {
 }
 
 export interface DecisionPoint {
+  id: string;
   label: string;
+  criteria?: string;
   trigger: TriggerType;
   connections?: StepConnection[];
+  targetStepId?: string;
+  timeoutMs?: number;
+  interruptionType?: string;
+  interruptionLabel?: string;
+}
+
+export interface ScenarioTask {
+  id: string;
+  label: string;
+  required: boolean;
+}
+
+export interface ScenarioInterruption {
+  id: string;
+  type: string;
+  description: string;
 }
 
 export interface ScenarioStep {
@@ -22,6 +40,8 @@ export interface ScenarioStep {
   description: string;
   tags: string[];
   flowType: "conditional" | "gated" | "linear" | "interruption";
+  tasks?: ScenarioTask[];
+  interruptions?: ScenarioInterruption[];
   decisionPoints?: DecisionPoint[];
 }
 
@@ -43,8 +63,16 @@ export interface OutcomeNode {
   position: { x: number; y: number };
 }
 
+export interface GlobalTimer {
+  id: string;
+  name: string;
+  timeoutMs: number;
+  targetStepId: string;
+}
+
 export interface ScenarioData {
   title: string;
   scenarioNode: ScenarioNode;
   outcomeNodes: OutcomeNode[];
+  globalTimers: GlobalTimer[];
 }

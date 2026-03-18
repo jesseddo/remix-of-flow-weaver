@@ -4,7 +4,7 @@ import originalJson from "@/data/scenarios.json";
 import scriptJson from "@/data/scenarios-script.json";
 import { transformScenario, JsonScenario } from "@/data/transformScenario";
 
-export type DisplayMode = "steps" | "grouped";
+export type DisplayMode = "steps" | "grouped" | "modal";
 
 const sources = [
   { key: "original", label: "Original", data: originalJson as JsonScenario[] },
@@ -71,7 +71,7 @@ const Index = () => {
 
         {/* Display mode toggle */}
         <div className="flex rounded-lg border border-border bg-background shadow-sm overflow-hidden">
-          {([["steps", "Steps"], ["grouped", "Grouped Steps"]] as const).map(
+          {([["steps", "Steps"], ["grouped", "Grouped Steps"], ["modal", "Modal Steps"]] as const).map(
             ([mode, label]) => (
               <button
                 key={mode}

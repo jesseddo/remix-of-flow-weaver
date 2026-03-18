@@ -48,6 +48,14 @@
         "description": "Guides scenario. Provides prompts and responds to your decisions throughout the scenario to help guide your learning experience."
       }
     ],
+    "globalTimers": [
+      {
+        "id": "global-timer-radio-call",
+        "name": "Interruption Radio Call",
+        "timeout_ms": 300000,
+        "target_id": "scene-step-3-radio-request"
+      }
+    ],
     "sceneResources": [
       {
         "title": "Start Work Check (SWC) Form",
@@ -127,14 +135,6 @@
             "description": "Learner signs off without requesting the form",
             "criteria": "A1_T1 skipped, A1_T2 done: Learner attempts to sign off to start work without first requesting the Start Work Check form",
             "target_id": "outcome-explosive-release"
-          },
-          {
-            "id": "trigger-timeout-step-1",
-            "type": "timeout",
-            "description": "No task completed within time limit",
-            "criteria": "No task completed within 2 minutes",
-            "timeout_ms": 120000,
-            "target_id": "scene-step-3-radio-request"
           }
         ]
       },
@@ -169,14 +169,6 @@
             "type": "task-complete",
             "description": "Learner completes the form review",
             "criteria": "A2_T1 completed: Learner checks off verified controls and exits the form",
-            "target_id": "scene-step-3-radio-request"
-          },
-          {
-            "id": "trigger-timeout-step-2",
-            "type": "timeout",
-            "description": "No task completed within time limit",
-            "criteria": "No task completed within 2 minutes",
-            "timeout_ms": 120000,
             "target_id": "scene-step-3-radio-request"
           }
         ]
