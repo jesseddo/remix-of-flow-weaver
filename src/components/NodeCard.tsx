@@ -360,9 +360,9 @@ export const ModalStepCard = ({
 
       {/* Tasks */}
       {step.tasks && step.tasks.length > 0 && (
-        <div className="px-3 pb-1.5 space-y-0.5">
+        <div className="px-3 pb-2 space-y-0.5">
           <div className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1">
-            Tasks
+            Expected Actions
           </div>
           {step.tasks.map((task) => (
             <div
@@ -371,12 +371,12 @@ export const ModalStepCard = ({
               style={{ background: "hsl(var(--secondary) / 0.5)" }}
             >
               <span
-                className="font-mono font-bold shrink-0"
-                style={{ color: "hsl(var(--primary) / 0.75)" }}
+                className="font-mono shrink-0 text-[8px]"
+                style={{ color: "hsl(var(--muted-foreground) / 0.5)" }}
               >
                 {task.id}
               </span>
-              <span className="text-muted-foreground leading-tight">{task.label}</span>
+              <span className="text-card-foreground leading-tight">{task.label}</span>
               {task.required && (
                 <span
                   className="ml-auto text-[7px] font-bold uppercase shrink-0 px-1 py-0.5 rounded"
@@ -392,6 +392,12 @@ export const ModalStepCard = ({
 
       {step.decisionPoints && step.decisionPoints.length > 0 && (
         <div className="px-3 pb-2 space-y-1">
+          <div
+            className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1 pt-1"
+            style={{ borderTop: "1px solid hsl(var(--border))" }}
+          >
+            Branching Paths
+          </div>
           {step.decisionPoints.map((dp, i) => {
             const isTimeout = dp.trigger === "timeout";
             const isOutcomeConn = dp.connections && dp.connections.length > 0;
@@ -450,7 +456,7 @@ export const ModalStepCard = ({
                   {displayText}
                 </span>
 
-                {timeoutLabel ? (
+                {timeoutLabel && (
                   <span
                     className="text-[8px] font-bold shrink-0 px-1.5 py-0.5 rounded font-mono"
                     style={{
@@ -459,17 +465,7 @@ export const ModalStepCard = ({
                       border: "1px solid hsl(38, 92%, 50%, 0.3)",
                     }}
                   >
-                    {isRadioInterruption ? "📻" : "⏱"} {timeoutLabel}
-                  </span>
-                ) : (
-                  <span
-                    className={`text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded ${
-                      dp.trigger === "user"
-                        ? "bg-primary/10 text-primary"
-                        : "bg-node-warning/15 text-node-warning"
-                    }`}
-                  >
-                    {dp.trigger}
+                    {timeoutLabel}
                   </span>
                 )}
 

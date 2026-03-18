@@ -25,6 +25,7 @@ interface JsonScene {
   id: string;
   title: string;
   description: string;
+  type?: string;
   triggers: JsonTrigger[];
   tasks?: JsonSceneTask[];
   interruptions?: JsonSceneInterruption[];
@@ -97,7 +98,18 @@ const outcomeTagLabels: Record<string, string> = {
   critical_failure: "Critical Failure",
 };
 
+const explicitTypeMap: Record<string, "chat" | "radio" | "document" | "video"> = {
+  "text-chat": "chat",
+  "document-review": "document",
+  "radio-call": "radio",
+  "video": "video",
+  "chat": "chat",
+  "radio": "radio",
+  "document": "document",
+};
+
 function inferStepType(scene: JsonScene): "chat" | "radio" | "document" | "video" {
+  if (scene.type && explicitTypeMap[scene.type]) return explicitTypeMap[scene.type];
   const text = `${scene.title} ${scene.description}`.toLowerCase();
   if (text.includes("document") || text.includes("review") || text.includes("lrp")) return "document";
   if (text.includes("radio")) return "radio";
