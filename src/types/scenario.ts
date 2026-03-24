@@ -32,17 +32,25 @@ export interface ScenarioInterruption {
   description: string;
 }
 
+export interface StepEvaluation {
+  competency: string;
+  weight: "high" | "medium" | "low";
+  requirement: string;
+}
+
 export interface ScenarioStep {
   id: string;
   title: string;
   type: NodeType;
   persona?: string;
+  resource?: string;
   description: string;
   tags: string[];
   flowType: "conditional" | "gated" | "linear" | "interruption";
   tasks?: ScenarioTask[];
   interruptions?: ScenarioInterruption[];
   decisionPoints?: DecisionPoint[];
+  evaluation?: StepEvaluation;
 }
 
 export interface ScenarioNode {

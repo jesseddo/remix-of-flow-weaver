@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer } from "@/types/scenario";
+import { ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer, StepEvaluation } from "@/types/scenario";
 import { MessageSquare, Radio, FileText, Video, User, Zap, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, ChevronDown, Timer, Clock } from "lucide-react";
 import type { OutcomeType } from "@/types/scenario";
 import type { DisplayMode } from "@/pages/Index";
@@ -274,6 +274,51 @@ function formatTimeoutMs(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+const weightConfig: Record<
+  "high" | "medium" | "low",
+  { label: string; color: string; bg: string; border: string }
+> = {
+  high:   { label: "High",   color: "hsl(340, 62%, 46%)", bg: "hsl(340, 62%, 96%)", border: "hsl(340, 62%, 82%)" },
+  medium: { label: "Medium", color: "hsl(340, 28%, 52%)", bg: "hsl(340, 28%, 96%)", border: "hsl(340, 28%, 84%)" },
+  low:    { label: "Low",    color: "hsl(220, 10%, 55%)", bg: "hsl(220, 10%, 95%)", border: "hsl(220, 10%, 82%)" },
+};
+
+const EvaluationSection = ({ evaluation }: { evaluation: StepEvaluation }) => {
+  const w = weightConfig[evaluation.weight];
+  return (
+    <div
+      className="px-3 pb-2 pt-1.5 space-y-1.5"
+      style={{ borderTop: "1px solid hsl(var(--border))" }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: "hsl(340, 40%, 55%)" }}>
+          Evaluation
+        </span>
+        <span
+          className="text-[7px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full shrink-0"
+          style={{ color: w.color, background: w.bg, border: `1px solid ${w.border}` }}
+        >
+          {w.label} weight
+        </span>
+      </div>
+      <div
+        className="text-[8px] font-medium px-1.5 py-0.5 rounded w-fit"
+        style={{ color: "hsl(340, 40%, 46%)", background: "hsl(340, 30%, 97%)", border: "1px solid hsl(340, 30%, 90%)" }}
+      >
+        {evaluation.competency}
+      </div>
+      <div className="space-y-0.5">
+        <span className="text-[7px] font-bold uppercase tracking-wider" style={{ color: "hsl(340, 40%, 55%)" }}>
+          Requirement
+        </span>
+        <p className="text-[9px] leading-snug italic" style={{ color: "hsl(var(--muted-foreground))" }}>
+          {evaluation.requirement}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 interface StepSpotlight {
   dimmed: boolean;
   fadedDpIndices: Set<number>;
@@ -343,6 +388,12 @@ export const ModalStepCard = ({
           </h4>
           {step.persona && (
             <p className="text-[9px] text-muted-foreground">{step.persona}</p>
+          )}
+          {step.resource && (
+            <p className="text-[8px] text-muted-foreground/70 flex items-center gap-0.5 mt-0.5">
+              <FileText className="w-2.5 h-2.5 shrink-0" />
+              {step.resource}
+            </p>
           )}
         </div>
         <span
@@ -484,6 +535,8 @@ export const ModalStepCard = ({
           })}
         </div>
       )}
+
+      {step.evaluation && <EvaluationSection evaluation={step.evaluation} />}
     </div>
   );
 };

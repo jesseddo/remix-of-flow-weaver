@@ -21,14 +21,23 @@ interface JsonSceneTask {
   required: boolean;
 }
 
+interface JsonSceneEvaluation {
+  competency: string;
+  weight: "high" | "medium" | "low";
+  requirement: string;
+}
+
 interface JsonScene {
   id: string;
   title: string;
   description: string;
   type?: string;
+  persona?: string;
+  resource?: string;
   triggers: JsonTrigger[];
   tasks?: JsonSceneTask[];
   interruptions?: JsonSceneInterruption[];
+  evaluation?: JsonSceneEvaluation;
 }
 
 interface JsonOutcome {
@@ -199,13 +208,15 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
       id: scene.id,
       title: scene.title,
       type: inferStepType(scene),
-      persona,
+      persona: scene.persona ?? persona,
+      resource: scene.resource,
       description: scene.description,
       tags: inferTags(scene),
       flowType: inferFlowType(scene),
       tasks: scene.tasks?.map((t) => ({ id: t.id, label: t.label, required: t.required })),
       interruptions: scene.interruptions?.map((s) => ({ id: s.id, type: s.type, description: s.description })),
       decisionPoints,
+      evaluation: scene.evaluation,
     };
   });
 
