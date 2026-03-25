@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer, StepEvaluation } from "@/types/scenario";
+import { ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer, StepEvaluation, ScenarioPath } from "@/types/scenario";
 import { MessageSquare, Radio, FileText, Video, User, Zap, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, ChevronDown, Timer, Clock } from "lucide-react";
 import type { OutcomeType } from "@/types/scenario";
 import type { DisplayMode } from "@/pages/Index";
@@ -88,6 +88,8 @@ interface ScenarioCardProps {
   onMouseDown: (e: React.MouseEvent) => void;
   onClick: (e: React.MouseEvent) => void;
   displayMode: DisplayMode;
+  selectedStepId?: string | null;
+  onSelectStep?: (stepId: string | null) => void;
 }
 
 interface OutcomeCardProps {
@@ -98,13 +100,34 @@ interface OutcomeCardProps {
   spotlightState?: "target" | "dimmed" | "none";
 }
 
-const StepRow = ({ step, index }: { step: ScenarioStep; index: number }) => {
+const StepRow = ({
+  step,
+  index,
+  isSelected,
+  onSelectStep,
+}: {
+  step: ScenarioStep;
+  index: number;
+  isSelected?: boolean;
+  onSelectStep?: (stepId: string | null) => void;
+}) => {
   const cfg = typeConfig[step.type];
   const Icon = cfg.icon;
 
   return (
     <div className="relative">
-      <div className="bg-card rounded-lg p-3 space-y-2 hover:bg-secondary/30 transition-colors">
+      <div
+        className={`bg-card rounded-lg p-3 space-y-2 hover:bg-secondary/30 transition-colors ${
+          onSelectStep ? "cursor-pointer" : ""
+        } ${isSelected ? "ring-2 ring-primary" : ""}`}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (onSelectStep) {
+            onSelectStep(isSelected ? null : step.id);
+          }
+        }}
+      >
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-1">
             <div
@@ -132,14 +155,16 @@ const StepRow = ({ step, index }: { step: ScenarioStep; index: number }) => {
           {step.description}
         </p>
 
-        {step.decisionPoints && step.decisionPoints.length > 0 && (
+        {step.paths && step.paths.length > 0 && (
           <div className="space-y-1 pl-8">
-            {step.decisionPoints.map((dp, i) => (
+            {step.paths.map((dp, i) => {
+              const isTimeout = dp.timeoutMs !== undefined;
+              return (
               <div
                 key={i}
                 className="flex items-center gap-2 text-[10px] text-card-foreground bg-secondary/60 rounded-md px-2 py-1 relative"
               >
-                {dp.trigger === "user" ? (
+                {!isTimeout ? (
                   <User className="w-2.5 h-2.5 text-primary shrink-0" />
                 ) : (
                   <Zap className="w-2.5 h-2.5 text-node-warning shrink-0" />
@@ -147,12 +172,12 @@ const StepRow = ({ step, index }: { step: ScenarioStep; index: number }) => {
                 <span className="leading-tight text-[10px]">{dp.label}</span>
                 <span
                   className={`ml-auto text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded ${
-                    dp.trigger === "user"
+                    !isTimeout
                       ? "bg-primary/10 text-primary"
                       : "bg-node-warning/15 text-node-warning"
                   }`}
                 >
-                  {dp.trigger}
+                  {isTimeout ? "timeout" : "user"}
                 </span>
                 {dp.connections && dp.connections.length > 0 && (() => {
                   const dotType = dp.connections[0].type;
@@ -169,7 +194,8 @@ const StepRow = ({ step, index }: { step: ScenarioStep; index: number }) => {
                   );
                 })()}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -188,7 +214,7 @@ const StepRow = ({ step, index }: { step: ScenarioStep; index: number }) => {
         </div>
       </div>
 
-      {index < (step.decisionPoints?.length || 0) - 1 && (
+      {index < (step.paths?.length || 0) - 1 && (
         <div className="flex justify-center py-1">
           <ChevronDown className="w-4 h-4 text-muted-foreground/50" />
         </div>
@@ -203,7 +229,7 @@ const GroupedTriggersView = ({ node }: { node: ScenarioNode }) => {
   return (
     <div className="p-4">
       {node.steps?.map((step, stepIndex) => {
-        const triggers = step.decisionPoints;
+        const triggers = step.paths;
         if (!triggers || triggers.length === 0) return null;
 
         const isStepHovered = hoveredStepIndex === stepIndex;
@@ -221,14 +247,16 @@ const GroupedTriggersView = ({ node }: { node: ScenarioNode }) => {
               marginBottom: "2px",
             }}
           >
-            {triggers.map((dp, dpIndex) => (
+            {triggers.map((dp: ScenarioPath, dpIndex: number) => {
+              const isTimeout = dp.timeoutMs !== undefined;
+              return (
               <div
                 key={dpIndex}
                 className="flex items-center gap-2 text-[10px] text-card-foreground bg-secondary/60 rounded-md px-2 py-1.5 relative mb-1 last:mb-0"
                 onMouseEnter={() => setHoveredStepIndex(stepIndex)}
                 onMouseLeave={() => setHoveredStepIndex(null)}
               >
-                {dp.trigger === "user" ? (
+                {!isTimeout ? (
                   <User className="w-2.5 h-2.5 text-primary shrink-0" />
                 ) : (
                   <Zap className="w-2.5 h-2.5 text-node-warning shrink-0" />
@@ -236,12 +264,12 @@ const GroupedTriggersView = ({ node }: { node: ScenarioNode }) => {
                 <span className="leading-tight text-[10px]">{dp.label}</span>
                 <span
                   className={`ml-auto text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded ${
-                    dp.trigger === "user"
+                    !isTimeout
                       ? "bg-primary/10 text-primary"
                       : "bg-node-warning/15 text-node-warning"
                   }`}
                 >
-                  {dp.trigger}
+                  {isTimeout ? "timeout" : "user"}
                 </span>
                 {dp.connections && dp.connections.length > 0 && (() => {
                   const dotType = dp.connections[0].type;
@@ -258,7 +286,8 @@ const GroupedTriggersView = ({ node }: { node: ScenarioNode }) => {
                   );
                 })()}
               </div>
-            ))}
+              );
+            })}
           </div>
         );
       })}
@@ -330,7 +359,6 @@ interface ModalStepCardProps {
   position: { x: number; y: number };
   isSelected: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
-  onClick: (e: React.MouseEvent) => void;
   spotlight?: StepSpotlight;
 }
 
@@ -340,7 +368,6 @@ export const ModalStepCard = ({
   position,
   isSelected,
   onMouseDown,
-  onClick,
   spotlight,
 }: ModalStepCardProps) => {
   const cfg = typeConfig[step.type];
@@ -367,7 +394,7 @@ export const ModalStepCard = ({
         pointerEvents: isDimmed ? "none" : undefined,
       }}
       onMouseDown={onMouseDown}
-      onClick={onClick}
+      onClick={(e) => e.stopPropagation()}
     >
       <div
         className="px-3 py-2 flex items-center gap-2"
@@ -424,8 +451,9 @@ export const ModalStepCard = ({
               <span
                 className="font-mono shrink-0 text-[8px]"
                 style={{ color: "hsl(var(--muted-foreground) / 0.5)" }}
+                title={task.id}
               >
-                {task.id}
+                {task.id.split("_").slice(0, 2).join("_")}
               </span>
               <span className="text-card-foreground leading-tight">{task.label}</span>
               {task.required && (
@@ -441,7 +469,7 @@ export const ModalStepCard = ({
         </div>
       )}
 
-      {step.decisionPoints && step.decisionPoints.length > 0 && (
+      {step.paths && step.paths.length > 0 && (
         <div className="px-3 pb-2 space-y-1">
           <div
             className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1 pt-1"
@@ -449,8 +477,8 @@ export const ModalStepCard = ({
           >
             Branching Paths
           </div>
-          {step.decisionPoints.map((dp, i) => {
-            const isTimeout = dp.trigger === "timeout";
+          {step.paths.map((dp, i) => {
+            const isTimeout = dp.timeoutMs !== undefined;
             const isOutcomeConn = dp.connections && dp.connections.length > 0;
             const dotType = isOutcomeConn ? dp.connections![0].type : "default";
             const dot = isOutcomeConn
@@ -463,17 +491,15 @@ export const ModalStepCard = ({
               ? formatTimeoutMs(dp.timeoutMs)
               : null;
             const isRadioInterruption = isTimeout && dp.interruptionType === "radio";
-            const shortLabel = isRadioInterruption
+            const displayText = isRadioInterruption
               ? (dp.interruptionLabel ?? dp.label)
               : dp.label;
-            const displayText = dp.criteria ?? shortLabel;
 
             const isDpFaded = spotlight && !spotlight.dimmed && spotlight.fadedDpIndices.has(i);
 
             return (
               <div
                 key={i}
-                title={dp.criteria ? shortLabel : undefined}
                 className={`flex items-center gap-1.5 text-[9px] text-card-foreground rounded px-2 relative transition-opacity duration-200 ${
                   isRadioInterruption
                     ? "py-1.5 bg-amber-500/10 border border-amber-400/30"
@@ -497,7 +523,7 @@ export const ModalStepCard = ({
                   </div>
                 ) : isTimeout ? (
                   <Timer className="w-2.5 h-2.5 shrink-0" style={{ color: "hsl(38, 92%, 45%)" }} />
-                ) : dp.trigger === "user" ? (
+                ) : !isTimeout ? (
                   <User className="w-2.5 h-2.5 text-primary shrink-0" />
                 ) : (
                   <Zap className="w-2.5 h-2.5 text-node-warning shrink-0" />
@@ -641,7 +667,7 @@ export const GlobalTimerCard = ({
   );
 };
 
-export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMode }: ScenarioCardProps) => {
+export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMode, selectedStepId, onSelectStep }: ScenarioCardProps) => {
   const borderColor = isSelected
     ? "ring-2 ring-primary"
     : "hover:ring-1 hover:ring-primary/40";
@@ -671,7 +697,12 @@ export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMo
         <div className="p-4 space-y-2">
           {node.steps?.map((step, index) => (
             <div key={step.id}>
-              <StepRow step={step} index={index} />
+              <StepRow
+                step={step}
+                index={index}
+                isSelected={selectedStepId === step.id}
+                onSelectStep={onSelectStep}
+              />
               {index < (node.steps?.length || 0) - 1 && (
                 <div className="flex justify-center py-2">
                   <div className="w-0.5 h-4 bg-gradient-to-b from-primary/30 to-primary/10" />

@@ -1,8 +1,8 @@
 [
   {
-    "id": "p101-v3",
-    "title": "P-101 Isobutane Pump Recommissioning",
-    "description": "Isobutane scenario simulation experience. Learner navigates a 4-step energy isolation sign-off process, interacting with Mike (Control Room) and Tom (at machinery), verifying controls, reviewing documents, and validating safeguards before approving work.",
+    "id": "rp_safeguards_pump_zero_energy_v3",
+    "title": "Safeguard Verification: Isobutane Pump Reinstated (Zero Energy Verification)",
+    "description": "Learner acts as the outside operator and permit approver-verifier for P-101 isobutane pump recommissioning. Navigate safeguard verification, physical walkdown, zero energy confirmation, and start work approval using correct communication protocols.",
     "status": "available",
     "version": "V3",
     "difficulty": "advanced",
@@ -35,254 +35,304 @@
       {
         "name": "Mike",
         "role": "Control Room Operator",
-        "description": "Operator stationed in the control room. Requests sign-off to start work and reports on 5 of 6 controls/safeguards checked prior to energy isolation — omitting Zero energy state control/verification."
+        "description": "Direct, concise; supports walk-through when prompted. Confirms isolation steps are complete and requests sign-off to start pump recommissioning."
       },
       {
         "name": "Tom",
-        "role": "Field Operator (at the machinery)",
-        "description": "Operator stationed at the machinery. Initiates a radio call requesting permission to begin energy isolation work, and assists with final walkthrough and safeguard validation."
+        "role": "Maintenance / Crew Lead",
+        "description": "Practical, field-focused, confident; may be slightly defensive. Represents isolations as implemented and assists with walkdown and safeguard validation."
+      },
+      {
+        "name": "Brad",
+        "role": "Field Operator",
+        "description": "Practical, concise. Calls in by radio during the walkdown requesting permission to activate the pump before verification is complete."
       },
       {
         "name": "Coach",
         "role": "Coach (Facilitator)",
-        "description": "Guides scenario. Provides prompts and responds to your decisions throughout the scenario to help guide your learning experience."
+        "description": "Reflective, guiding. Leads post-scenario debrief, helping the learner articulate lessons learned."
       }
     ],
     "globalTimers": [
       {
-        "id": "global-timer-radio-call",
-        "name": "Interruption Radio Call",
-        "timeout_ms": 300000,
-        "target_id": "scene-step-3-radio-request"
+        "id": "global-timer-interruption",
+        "name": "Pump Recommissioning Interruption",
+        "timeout_ms": 120000,
+        "target_id": "I1_Interruption"
       }
     ],
     "sceneResources": [
       {
+        "id": "PTW",
+        "title": "Permit to Work (PTW)",
+        "type": "Document",
+        "description": "Active work permit for P-101 pump recommissioning"
+      },
+      {
+        "id": "SWC",
         "title": "Start Work Check (SWC) Form",
         "type": "Document",
-        "description": "Mandatory checklist for verifying safety controls/safeguards before signing off to start work. Includes verification items for energy isolation activities.",
+        "description": "Mandatory checklist for verifying safety requirements before starting work",
         "url": "https://oe-ffl-chat.vercel.app/SWC.pdf"
       },
       {
-        "title": "Isolation List - P-101 (LOTO)",
+        "id": "LOTO",
+        "title": "Isolation List - P-101",
         "type": "Document",
-        "description": "Complete list of all isolation points, locks, and tags for P-101 pump. Used for final safeguard verification including bleed valve testing.",
-        "url": "https://oe-ffl-chat.vercel.app/LOTO.pdf"
+        "description": "Complete list of all isolation points, locks, and tags for P-101 pump.\n\n## ISOLATION LIST - P-101 ISOBUTANE PUMP\n\n### ISOLATION POINTS\n| ID | Isolation Point | Description | Lock Number | Tag Number | Status | Verification |\n|----|----------------|-------------|-------------|------------|--------|--------------|\n| ISO-001 | V-101 | Suction Valve - Main Isolation | ISO-001 | TAG-001 | 🔒 **CLOSED & LOCKED** | ☐ Verified |\n| ISO-002 | V-102 | Discharge Valve - Main Isolation | ISO-002 | TAG-002 | 🔒 **CLOSED & LOCKED** | ☐ Verified |\n| ISO-003 | V-104 | Secondary Block Valve | ISO-003 | TAG-003 | 🔒 **CLOSED & LOCKED** | ☐ Verified |\n| ISO-004 | V-103 | Bleeder Valve (Zero Energy Check) | N/A | N/A | 🔒 **CLOSED** (No lock required) | ☐ Verified |\n| ISO-005 | MCC-01 | Electrical Disconnect - Motor Control Center | ISO-005 | TAG-005 | 🔒 **DISCONNECTED & LOCKED** | ☐ Verified |",
+        "url": "https://oe-ffl-chat.vercel.app/LOTO.pdf",
+        "hidden": true
       }
     ],
     "outcomes": [
       {
-        "id": "outcome-safe-operation",
-        "title": "Safe Operation",
+        "id": "O1_Safe_Outcome_Recommission",
+        "title": "Safe Proceed — Zero Energy Verified",
         "outcomeType": "safe_path",
-        "description": "Excellent work! You correctly requested the Start Work Check form, identified the missing zero energy state verification, refused to approve work prematurely, requested the isolation list, and verified the bleed valve before signing off. All safeguards were properly validated before work commenced."
+        "description": "You prevented an incident by requiring proof of zero energy — not just a gauge reading. Work proceeded after bleeder/vent verification and aligned start work expectations. Debrief: You demonstrated verification discipline, critical safeguard focus, and closed-loop communication. How will you apply this verification approach on the next job?"
       },
       {
-        "id": "outcome-explosive-release",
-        "title": "Explosive Release",
+        "id": "O2_Incident_Flange_Break",
+        "title": "Incident: Flange Break",
         "outcomeType": "critical_failure",
-        "description": "Critical safety failure. By signing off to start work without first requesting and reviewing the Start Work Check form — or by approving Tom's request without proper verification — energy isolation safeguards were not confirmed. This resulted in an explosive release of isobutane."
+        "description": "Work proceeded to flange break. Residual pressure/gas released; local monitors alarmed; workers evacuated. One crew member was transported offsite. The critical miss: approving start work without proving zero energy — the bleeder/vent was never opened. Debrief: What verification dialogue should have happened before sign-off? What will you do differently next time?"
       },
       {
-        "id": "outcome-harmful-gas",
-        "title": "Harmful Gas Released",
+        "id": "O3_Valve_Blowby",
+        "title": "Incident: Valve Blowby",
         "outcomeType": "partial_failure",
-        "description": "Safety failure. Although you may have requested the isolation list, you approved work without verifying the bleed valve. The bleed valve had not been properly tested and residual pressure remained in the system, resulting in a harmful gas release when work commenced."
+        "description": "Work proceeded to valve blowby. Residual pressure/gas released during recommissioning; evacuation initiated. The critical miss: approving start work without proving zero energy — the bleeder/vent verification step was skipped. Debrief: What verification step was missed? What stop-work triggers should have applied?"
       }
     ],
     "scenes": [
       {
-        "id": "scene-step-1-request-to-start-work",
-        "title": "Step 1: Request to Start Work",
-        "description": "Learner speaks with Mike who's at the control room; Mike would like to get the sign off to start work. If asked to review the controls/safeguards checked prior to energy isolation activities, Mike speaks of 5 controls that were checked, and misses out on Zero energy state control/verification.",
+        "id": "A1_Orientation",
+        "title": "Orientation",
+        "description": "Mike with control room confirms isolation steps are complete and asks for go-ahead to start pump recommissioning. Learner receives the Permit to Work and Start Work Check form and must determine next steps before approving any work.",
         "type": "text-chat",
         "persona": "Mike",
+        "personaAdherence": 3,
         "tasks": [
           {
-            "id": "A1_T1",
-            "label": "Asks for Start Work Check Form",
-            "required": true
+            "id": "A1_T3_Request_Isolation_List",
+            "label": "Request the isolation list from the crew lead / maintenance lead",
+            "required": true,
+            "hidden": true
           },
           {
-            "id": "A1_T2",
-            "label": "Signs off to start work",
-            "required": false
-          }
-        ],
-        "interruptions": [
+            "id": "A1_T4_Begin_Walkdown_with_Isolation_List",
+            "label": "Request a walkdown to verify isolations and safeguards using the isolation list",
+            "required": true,
+            "hidden": true,
+            "prerequisite": "A1_T3_Request_Isolation_List"
+          },
           {
-            "id": "A1_S1",
-            "type": "radio",
-            "description": "Radio interruption"
+            "id": "A1_T5_Begin_Walkdown_without_Isolation_List",
+            "label": "Request a walkdown to verify isolations and safeguards without the isolation list",
+            "required": false,
+            "hidden": true
+          },
+          {
+            "id": "A1_T6_Sign_Off_Start_Work_Check_and_Permit",
+            "label": "Sign off on the Start Work Check form and the permit to work without a walkdown",
+            "required": false,
+            "hidden": true
           }
         ],
         "evaluation": {
-          "competency": "Safety Compliance / Situational Awareness",
+          "competency": "Safeguard Verification",
           "weight": "high",
-          "requirement": "Explicitly request the 'Start Work Check form'"
+          "requirement": "Learner must request the isolation list and insist on a physical walkdown before approving any work"
         },
-        "triggers": [
+        "paths": [
           {
-            "id": "trigger-form-requested",
-            "type": "task-complete",
-            "description": "Learner requests the Start Work Check Form",
-            "criteria": "A1_T1 completed: Learner explicitly asks for the Start Work Check form before signing off",
-            "target_id": "scene-step-2-review-swc-form"
+            "id": "path-a1-walkdown-with-list",
+            "description": "Learner requests isolation list then requests walkdown with it",
+            "prerequisite": { "all": ["A1_T3_Request_Isolation_List", "A1_T4_Begin_Walkdown_with_Isolation_List"] },
+            "target_id": "A2B_Walkdown_with_isolation_list"
           },
           {
-            "id": "trigger-signoff-without-form",
-            "type": "task-skip",
-            "description": "Learner signs off without requesting the form",
-            "criteria": "A1_T1 skipped, A1_T2 done: Learner attempts to sign off to start work without first requesting the Start Work Check form",
-            "target_id": "outcome-explosive-release"
+            "id": "path-a1-walkdown-without-list",
+            "description": "Learner requests walkdown without first requesting the isolation list",
+            "prerequisite": { "all": ["A1_T5_Begin_Walkdown_without_Isolation_List"], "none": ["A1_T3_Request_Isolation_List"] },
+            "target_id": "A2A_Walkdown_with_missing_isolation_list"
+          },
+          {
+            "id": "path-a1-sign-off-early",
+            "description": "Learner signs off without requesting a walkdown",
+            "prerequisite": { "all": ["A1_T6_Sign_Off_Start_Work_Check_and_Permit"], "none": ["A1_T4_Begin_Walkdown_with_Isolation_List", "A1_T5_Begin_Walkdown_without_Isolation_List"] },
+            "target_id": "A3_Perform_SWC_Dialogue"
           }
         ]
       },
       {
-        "id": "scene-step-2-review-swc-form",
-        "title": "Step 2: Review Start Work Check Form",
-        "description": "Learner reviews and checks off verified controls from the Start Work Check Form. Mike reported 5 controls checked but omitted Zero energy state control — learner should only check off the 5 verified controls and NOT check off zero energy state.",
-        "type": "document-review",
+        "id": "A2A_Walkdown_with_missing_isolation_list",
+        "title": "Walkdown Without Isolation List",
+        "description": "Tom with maintenance arrives to walk through the isolations. The Start Work Check form and Permit to Work are available but the isolation list was not requested. Tom represents isolations as implemented and expects the learner to verify safeguards.",
+        "type": "text-chat",
+        "persona": "Tom",
+        "personaAdherence": 3,
+        "tasks": [
+          {
+            "id": "A2A_T1_Request_Isolation_List",
+            "label": "Request the isolation list from the crew lead / maintenance lead",
+            "required": true,
+            "hidden": true
+          },
+          {
+            "id": "A2A_T2_Verify_Isolations",
+            "label": "Verify isolations and safeguards without the isolation list",
+            "required": false,
+            "hidden": true
+          },
+          {
+            "id": "A2A_T3_Sign_Off_Start_Work_Check_and_Permit",
+            "label": "Sign off on the Start Work Check form and the permit to work",
+            "required": false,
+            "hidden": true
+          }
+        ],
+        "evaluation": {
+          "competency": "Safeguard Verification",
+          "weight": "high",
+          "requirement": "Learner must request the isolation list before verifying or approving any work"
+        },
+        "paths": [
+          {
+            "id": "path-a2a-get-list",
+            "description": "Learner requests the isolation list",
+            "prerequisite": { "all": ["A2A_T1_Request_Isolation_List"] },
+            "target_id": "A2B_Walkdown_with_isolation_list"
+          },
+          {
+            "id": "path-a2a-verify-without-list",
+            "description": "Learner verifies isolations without the list",
+            "prerequisite": { "all": ["A2A_T2_Verify_Isolations"], "none": ["A2A_T1_Request_Isolation_List"] },
+            "target_id": "O2_Incident_Flange_Break"
+          },
+          {
+            "id": "path-a2a-sign-off-without-list",
+            "description": "Learner signs off without requesting the isolation list",
+            "prerequisite": { "all": ["A2A_T3_Sign_Off_Start_Work_Check_and_Permit"], "none": ["A2A_T1_Request_Isolation_List"] },
+            "target_id": "O2_Incident_Flange_Break"
+          }
+        ]
+      },
+      {
+        "id": "A2B_Walkdown_with_isolation_list",
+        "title": "Walkdown With Isolation List",
+        "description": "Tom leads the field walkdown using the P-101 isolation list. All isolation points are represented as implemented. Learner must physically verify each isolation and safeguard against the LOTO list before proceeding.",
+        "type": "text-chat",
+        "persona": "Tom",
+        "personaAdherence": 3,
+        "resource": "Isolation List - P-101",
+        "tasks": [
+          {
+            "id": "A2B_T1_Verify_Isolations",
+            "label": "Verify isolations and safeguards using the isolation list",
+            "required": true,
+            "hidden": true
+          }
+        ],
+        "evaluation": {
+          "competency": "Safeguard Verification",
+          "weight": "high",
+          "requirement": "Learner verifies all isolation points against the LOTO isolation list"
+        },
+        "paths": [
+          {
+            "id": "path-a2b-verified",
+            "description": "Learner verifies all isolations with the isolation list",
+            "prerequisite": { "all": ["A2B_T1_Verify_Isolations"] },
+            "target_id": "A3_Perform_SWC_Dialogue"
+          }
+        ]
+      },
+      {
+        "id": "A3_Perform_SWC_Dialogue",
+        "title": "SWC Walkthrough Dialogue",
+        "description": "Tom verbally walks through all hard isolations: breaker VE03A off with LOTO lock/tag; inlet, discharge, outlet, vent, bypass, and return valves all closed and locked/tagged. Learner must request zero energy verification — specifically that the bleeder valve be opened to prove zero pressure — before signing off.",
+        "type": "text-chat",
+        "persona": "Tom",
+        "personaAdherence": 3,
         "resource": "Start Work Check (SWC) Form",
         "tasks": [
           {
-            "id": "A2_T1",
-            "label": "Checks off verified controls in Start Work Check Form and exits form",
-            "required": true
-          }
-        ],
-        "interruptions": [
-          {
-            "id": "A2_S1",
-            "type": "radio",
-            "description": "Radio interruption"
+            "id": "A3_T1_Request_Zero_Energy_Verification",
+            "label": "Ask Tom to open the bleeder valve to verify zero energy state",
+            "required": true,
+            "hidden": true
           }
         ],
         "evaluation": {
-          "competency": "Risk Assessment",
-          "weight": "medium",
-          "requirement": "Learner checks off only the verified controls; did not check off zero energy state control"
-        },
-        "triggers": [
-          {
-            "id": "trigger-form-reviewed",
-            "type": "task-complete",
-            "description": "Learner completes the form review",
-            "criteria": "A2_T1 completed: Learner checks off verified controls and exits the form",
-            "target_id": "scene-step-3-radio-request"
-          }
-        ]
-      },
-      {
-        "id": "scene-step-3-radio-request",
-        "title": "Step 3: Remote Request for Sign Off and Start Work",
-        "description": "Learner gets radio call from Tom requesting to start energy isolation work.",
-        "type": "radio-call",
-        "persona": "Tom",
-        "tasks": [
-          {
-            "id": "A3_T1",
-            "label": "Refuses to approve request",
-            "required": true
-          },
-          {
-            "id": "A3_T2",
-            "label": "Requests walkthrough",
-            "required": true
-          }
-        ],
-        "evaluation": {
-          "competency": "Decision Making",
+          "competency": "Safeguard Verification",
           "weight": "high",
-          "requirement": "Learner must not sign off; they must request a walkthrough"
+          "requirement": "Learner must request bleeder/vent verification — not accept gauge reading alone — before approving start work"
         },
-        "triggers": [
+        "paths": [
           {
-            "id": "trigger-refused-and-walkthrough",
-            "type": "task-complete",
-            "description": "Learner refuses and requests walkthrough",
-            "criteria": "A3_T1 and A3_T2 completed: Learner refuses to approve the request and requests a walkthrough of the isolation points",
-            "target_id": "scene-step-4-final-validation"
+            "id": "path-a3-zero-energy-verified",
+            "description": "Learner requests bleeder/vent zero energy verification",
+            "prerequisite": { "all": ["A3_T1_Request_Zero_Energy_Verification"] },
+            "target_id": "O1_Safe_Outcome_Recommission"
           },
           {
-            "id": "trigger-approved-request",
-            "type": "task-fail",
-            "description": "Learner approves the request without refusing/walkthrough",
-            "criteria": "A3_T1 not done correctly (i.e. approves the request): Learner approves Tom's request to start work without refusing or requesting a walkthrough",
-            "target_id": "outcome-explosive-release"
+            "id": "path-a3-no-zero-energy",
+            "description": "Learner approves without requesting zero energy verification",
+            "prerequisite": { "none": ["A3_T1_Request_Zero_Energy_Verification"] },
+            "target_id": "O3_Valve_Blowby"
           }
         ]
       },
       {
-        "id": "scene-step-4-final-validation",
-        "title": "Step 4: Final Validation & Sign-off",
-        "description": "Tom checks the pressure gauge and it shows '0'. Learner requests for the isolation list and conducts proper control/safeguard verification on the bleed valve before finally signing off to start work when everything is checked and safe.",
-        "type": "text-chat",
-        "resource": "Isolation List - P-101 (LOTO)",
-        "persona": "Tom",
+        "id": "I1_Interruption",
+        "title": "Pump Recommissioning Interruption",
+        "description": "Brad radios in from the field requesting permission to start pump recommissioning while the walkdown is still in progress. Learner must refuse and insist on completing physical verification first.",
+        "type": "radio-call",
+        "persona": "Brad",
+        "personaAdherence": 4,
         "tasks": [
           {
-            "id": "A4_T1",
-            "label": "Requests isolation list",
-            "required": true
-          },
-          {
-            "id": "A4_T2",
-            "label": "Requests to test bleed valve",
-            "required": true
-          },
-          {
-            "id": "A4_T3",
-            "label": "Approves request to start work",
-            "required": true
+            "id": "I1_T1_Refuse_To_Activate",
+            "label": "Refuse to approve pump start without completing the physical walkdown and verification",
+            "required": true,
+            "hidden": true
           }
         ],
         "evaluation": {
-          "competency": "Administrative Completion",
-          "weight": "low",
-          "requirement": "Use the Document Review type to sign off"
+          "competency": "Safeguard Verification",
+          "weight": "high",
+          "requirement": "Learner must refuse to approve pump start and insist on completing the physical walkdown first"
         },
-        "triggers": [
+        "paths": [
           {
-            "id": "trigger-full-validation",
-            "type": "task-complete",
-            "description": "All validation steps completed before approval",
-            "criteria": "A4_T1, A4_T2, and A4_T3 all completed: Learner requests isolation list, tests bleed valve, then approves work",
-            "target_id": "outcome-safe-operation"
+            "id": "path-i1-refuse",
+            "description": "Learner refuses and directs continuation of the walkdown",
+            "prerequisite": { "all": ["I1_T1_Refuse_To_Activate"] },
+            "target_id": "A2B_Walkdown_with_isolation_list"
           },
           {
-            "id": "trigger-approve-only",
-            "type": "task-incomplete",
-            "description": "Learner approves without isolation list or bleed valve test",
-            "criteria": "A4_T3 only done: Learner approves work without requesting isolation list or testing bleed valve",
-            "target_id": "outcome-harmful-gas"
-          },
-          {
-            "id": "trigger-approve-without-bleed-test",
-            "type": "task-incomplete",
-            "description": "Learner requests isolation list but skips bleed valve test",
-            "criteria": "A4_T1 and A4_T3 done without A4_T2: Learner requests isolation list but approves work without testing bleed valve",
-            "target_id": "outcome-harmful-gas"
+            "id": "path-i1-approve",
+            "description": "Learner approves pump start without completing verification",
+            "prerequisite": { "none": ["I1_T1_Refuse_To_Activate"] },
+            "target_id": "O2_Incident_Flange_Break"
           }
         ]
       },
       {
-        "id": "outcome-safe-operation",
-        "title": "Safe Operation",
-        "description": "Positive outcome — learner verified all safeguards, tested the bleed valve, and confirmed zero energy state before approving work.",
-        "triggers": []
+        "id": "O1_Safe_Outcome_Recommission",
+        "title": "Safe Proceed — Zero Energy Verified",
+        "description": "Zero energy proven via bleeder/vent verification. Work proceeds safely with all safeguards confirmed."
       },
       {
-        "id": "outcome-explosive-release",
-        "title": "Explosive Release",
-        "description": "Negative outcome — learner signed off without reviewing the Start Work Check form, or approved work prematurely without a proper walkthrough.",
-        "triggers": []
+        "id": "O2_Incident_Flange_Break",
+        "title": "Incident: Flange Break",
+        "description": "Gap missed — bleeder/vent not verified. Flange break at recommission causes residual pressure release. One crew member transported offsite."
       },
       {
-        "id": "outcome-harmful-gas",
-        "title": "Harmful Gas Released",
-        "description": "Negative outcome — learner approved work without verifying the bleed valve, resulting in harmful gas release.",
-        "triggers": []
+        "id": "O3_Valve_Blowby",
+        "title": "Incident: Valve Blowby",
+        "description": "Zero energy not proven. Valve blowby causes residual pressure/gas release during recommissioning work."
       }
     ]
   }

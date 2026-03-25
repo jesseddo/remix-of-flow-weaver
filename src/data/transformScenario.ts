@@ -1,10 +1,9 @@
-import { ScenarioData, ScenarioStep, OutcomeNode, StepConnection, GlobalTimer } from "@/types/scenario";
+import { ScenarioData, ScenarioStep, OutcomeNode, StepConnection, GlobalTimer, PrerequisiteCondition, Persona, ScenarioResource } from "@/types/scenario";
 
-interface JsonTrigger {
+interface JsonPath {
   id: string;
-  type: string;
   description: string;
-  criteria: string;
+  prerequisite: PrerequisiteCondition;
   target_id: string;
   timeout_ms?: number;
 }
@@ -19,10 +18,15 @@ interface JsonSceneTask {
   id: string;
   label: string;
   required: boolean;
+  hidden?: boolean;
+  type?: "behavioral" | "tool";
+  tool?: { action: string; resourceId?: string };
+  prerequisite?: PrerequisiteCondition;
 }
 
 interface JsonSceneEvaluation {
   competency: string;
+  competencyId?: string;
   weight: "high" | "medium" | "low";
   requirement: string;
 }
@@ -33,8 +37,9 @@ interface JsonScene {
   description: string;
   type?: string;
   persona?: string;
+  personaAdherence?: number;
   resource?: string;
-  triggers: JsonTrigger[];
+  paths?: JsonPath[];
   tasks?: JsonSceneTask[];
   interruptions?: JsonSceneInterruption[];
   evaluation?: JsonSceneEvaluation;
@@ -73,7 +78,7 @@ export interface JsonScenario {
   unit?: string;
   media?: { type: string; url: string }[];
   team?: JsonTeamMember[];
-  sceneResources?: { title: string; type: string; description: string; url?: string }[];
+  sceneResources?: { id?: string; title: string; type: string; description?: string; url?: string }[];
   outcomes?: JsonOutcome[];
   scenes?: JsonScene[];
   globalTimers?: JsonGlobalTimer[];
@@ -127,8 +132,9 @@ function inferStepType(scene: JsonScene): "chat" | "radio" | "document" | "video
 }
 
 function inferFlowType(scene: JsonScene): "conditional" | "gated" | "linear" | "interruption" {
-  if (scene.triggers.length > 1) return "conditional";
-  if (scene.triggers.length === 1) return "gated";
+  const pathCount = scene.paths?.length ?? 0;
+  if (pathCount > 1) return "conditional";
+  if (pathCount === 1) return "gated";
   return "linear";
 }
 
@@ -151,50 +157,61 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
   if (!json.scenes || json.scenes.length === 0) return null;
 
   const terminalSceneIds = new Set(
-    json.scenes.filter((s) => s.triggers.length === 0).map((s) => s.id)
+    json.scenes.filter((s) => !s.paths || s.paths.length === 0).map((s) => s.id)
   );
 
-  const stepScenes = json.scenes.filter((s) => s.triggers.length > 0);
-  const outcomeScenes = json.scenes.filter((s) => s.triggers.length === 0);
+  const stepScenes = json.scenes.filter((s) => s.paths && s.paths.length > 0);
+  const outcomeScenes = json.scenes.filter((s) => !s.paths || s.paths.length === 0);
 
-  const persona = json.team?.find((t) => t.role.toLowerCase().includes("coach"))?.name ?? "Coach";
+  const personas: Persona[] = (json.team ?? []).map((t) => ({
+    id: t.name.toLowerCase().replace(/\s+/g, "-"),
+    name: t.name,
+    role: t.role,
+    description: t.description,
+  }));
+
+  const resources: ScenarioResource[] = (json.sceneResources ?? []).map((r, i) => ({
+    id: r.id ?? `resource-${i}`,
+    title: r.title,
+    type: r.type,
+    description: r.description,
+    url: r.url,
+  }));
+
+  const defaultPersonaName =
+    json.team?.find((t) => t.role.toLowerCase().includes("coach"))?.name ?? "Coach";
 
   const steps: ScenarioStep[] = stepScenes.map((scene) => {
-    const decisionPoints = scene.triggers.map((trigger) => {
+    const paths = (scene.paths ?? []).map((path) => {
       const connections: StepConnection[] = [];
       let targetStepId: string | undefined;
 
-      if (terminalSceneIds.has(trigger.target_id)) {
-        const targetScene = json.scenes!.find((s) => s.id === trigger.target_id)!;
+      if (terminalSceneIds.has(path.target_id)) {
+        const targetScene = json.scenes!.find((s) => s.id === path.target_id)!;
         const outcomeType = resolveOutcomeType(targetScene, json.outcomes);
         connections.push({
-          label: trigger.description,
-          targetNodeId: trigger.target_id,
+          label: path.description,
+          targetNodeId: path.target_id,
           type: outcomeType,
         });
       } else {
-        targetStepId = trigger.target_id;
+        targetStepId = path.target_id;
       }
 
-      const isTimeout = trigger.type === "timeout";
-      const triggerKind = isTimeout ? ("timeout" as const) : ("user" as const);
+      const isTimeout = path.timeout_ms !== undefined;
 
-      // If this is a timeout trigger, check whether the scene has a matching
-      // interruption (e.g. a radio call scheduled to fire during this scene).
-      // The interruption IS the timed event — the timeout is just how long until it fires.
       const linkedInterruption =
         isTimeout && scene.interruptions && scene.interruptions.length > 0
           ? scene.interruptions[0]
           : undefined;
 
       return {
-        id: trigger.id,
-        label: trigger.description,
-        criteria: trigger.criteria,
-        trigger: triggerKind,
+        id: path.id,
+        label: path.description,
+        prerequisite: path.prerequisite,
         ...(connections.length > 0 ? { connections } : {}),
         ...(targetStepId ? { targetStepId } : {}),
-        ...(isTimeout && trigger.timeout_ms ? { timeoutMs: trigger.timeout_ms } : {}),
+        ...(isTimeout && path.timeout_ms ? { timeoutMs: path.timeout_ms } : {}),
         ...(linkedInterruption
           ? {
               interruptionType: linkedInterruption.type,
@@ -208,14 +225,23 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
       id: scene.id,
       title: scene.title,
       type: inferStepType(scene),
-      persona: scene.persona ?? persona,
+      persona: scene.persona ?? defaultPersonaName,
+      personaAdherence: scene.personaAdherence,
       resource: scene.resource,
       description: scene.description,
       tags: inferTags(scene),
       flowType: inferFlowType(scene),
-      tasks: scene.tasks?.map((t) => ({ id: t.id, label: t.label, required: t.required })),
+      tasks: scene.tasks?.map((t) => ({
+        id: t.id,
+        label: t.label,
+        required: t.required,
+        hidden: t.hidden,
+        type: t.type,
+        tool: t.tool,
+        prerequisite: t.prerequisite,
+      })),
       interruptions: scene.interruptions?.map((s) => ({ id: s.id, type: s.type, description: s.description })),
-      decisionPoints,
+      paths,
       evaluation: scene.evaluation,
     };
   });
@@ -256,5 +282,7 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
     },
     outcomeNodes,
     globalTimers,
+    personas,
+    resources,
   };
 }

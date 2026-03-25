@@ -88,7 +88,7 @@ const FlowConnections = ({
     const exitX = scenarioNode.position.x + SCENARIO_W;
 
     scenarioNode.steps?.forEach((step, stepIndex) => {
-      step.decisionPoints?.forEach((dp, dpIndex) => {
+      step.paths?.forEach((dp, dpIndex) => {
         if (!dp.connections) return;
 
         const dotEl = document.querySelector(

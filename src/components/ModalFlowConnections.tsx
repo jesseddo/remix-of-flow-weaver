@@ -75,8 +75,8 @@ const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTi
     }>();
 
     for (const step of steps) {
-      for (let i = 0; i < (step.decisionPoints?.length || 0); i++) {
-        const dp = step.decisionPoints![i];
+      for (let i = 0; i < (step.paths?.length || 0); i++) {
+        const dp = step.paths![i];
         const dpKey = `${step.id}-${i}`;
 
         if (dp.connections && dp.connections.length > 0) {
@@ -86,7 +86,7 @@ const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTi
             type: conn.type as ConnectionType,
           });
         } else if (dp.targetStepId) {
-          const isTimeout = dp.trigger === "timeout";
+          const isTimeout = dp.timeoutMs !== undefined;
           map.set(dpKey, {
             targetId: dp.targetStepId,
             type: isTimeout ? "timeout" : "step",

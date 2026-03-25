@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useMemo } from "react";
+import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { ScenarioData, ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer } from "@/types/scenario";
 import { ScenarioCard, OutcomeCard, ModalStepCard, GlobalTimerCard } from "./NodeCard";
 import FlowConnections from "./FlowConnections";
@@ -8,6 +8,8 @@ import type { DisplayMode } from "@/pages/Index";
 interface NodeCanvasProps {
   scenario: ScenarioData;
   displayMode: DisplayMode;
+  selectedStepId?: string | null;
+  onSelectStep?: (stepId: string | null) => void;
 }
 
 type DraggableNode = ScenarioNode | OutcomeNode;
@@ -17,17 +19,35 @@ type DraggableNode = ScenarioNode | OutcomeNode;
 // ─────────────────────────────────────────────────────────
 
 const MODAL_STEP_W = 280;
-const MODAL_STEP_H_EST = 190;
 const MODAL_OUTCOME_W = 220;
 const MODAL_OUTCOME_H = 280;
 const MODAL_COL_GAP = 100;
-const MODAL_ROW_GAP = 36;
+const MODAL_ROW_GAP = 48;
 const MODAL_LEFT = 60;
 const GLOBAL_TIMER_W = 220;
 const GLOBAL_TIMER_H = 80;
 const GLOBAL_TIMER_GAP = 30;
+const PANEL_WIDTH = 420;
 
-function buildAdjacency(steps: ScenarioStep[], outcomeNodes: OutcomeNode[]) {
+/** Dynamic card-height estimate based on actual content counts. */
+function estimateStepCardHeight(step: ScenarioStep): number {
+  const taskCount = step.tasks?.length ?? 0;
+  const pathCount = step.paths?.length ?? 0;
+  return (
+    44 +                                    // header
+    52 +                                    // description (~3 lines)
+    (taskCount > 0 ? 24 + taskCount * 36 : 0) +  // tasks section
+    (pathCount > 0 ? 24 + pathCount * 32 : 0) +  // paths section
+    (step.evaluation ? 72 : 0) +           // evaluation block
+    16                                      // bottom padding
+  );
+}
+
+function buildAdjacency(
+  steps: ScenarioStep[],
+  outcomeNodes: OutcomeNode[],
+  globalTimers: GlobalTimer[] = [],
+) {
   const outcomeIds = new Set(outcomeNodes.map((o) => o.id));
   const successors = new Map<string, Set<string>>();
   const predecessorCount = new Map<string, number>();
@@ -42,7 +62,7 @@ function buildAdjacency(steps: ScenarioStep[], outcomeNodes: OutcomeNode[]) {
   }
 
   for (const step of steps) {
-    for (const dp of step.decisionPoints ?? []) {
+    for (const dp of step.paths ?? []) {
       let targetId: string | undefined;
       if (dp.connections && dp.connections.length > 0) {
         targetId = dp.connections[0].targetNodeId;
@@ -52,6 +72,21 @@ function buildAdjacency(steps: ScenarioStep[], outcomeNodes: OutcomeNode[]) {
       if (targetId && !successors.get(step.id)!.has(targetId)) {
         successors.get(step.id)!.add(targetId);
         predecessorCount.set(targetId, (predecessorCount.get(targetId) ?? 0) + 1);
+      }
+    }
+  }
+
+  // Timer-triggered steps have no predecessor in the normal path graph, so
+  // they land in column 0 alongside the start step and visually overlap.
+  // Give each such step an artificial edge from the first step so the
+  // DAG layout pushes it into its own column.
+  const timerTargetIds = new Set(globalTimers.map((t) => t.targetStepId));
+  const firstStepId = steps[0]?.id;
+  if (firstStepId) {
+    for (const targetId of timerTargetIds) {
+      if (targetId !== firstStepId && (predecessorCount.get(targetId) ?? 0) === 0) {
+        successors.get(firstStepId)?.add(targetId);
+        predecessorCount.set(targetId, 1);
       }
     }
   }
@@ -66,12 +101,11 @@ function computeModalPositions(
 ): Map<string, { x: number; y: number }> {
   if (steps.length === 0) return new Map();
 
-  // If there are global timers, push the main flow down to make room above
   const MODAL_TOP = globalTimers.length > 0
     ? GLOBAL_TIMER_H + GLOBAL_TIMER_GAP + 80
     : 80;
 
-  const { successors, predecessorCount, outcomeIds } = buildAdjacency(steps, outcomeNodes);
+  const { successors, predecessorCount, outcomeIds } = buildAdjacency(steps, outcomeNodes, globalTimers);
 
   const column = new Map<string, number>();
   const inDegree = new Map(predecessorCount);
@@ -99,21 +133,34 @@ function computeModalPositions(
     }
   }
 
+  // Spread steps into unique columns while preserving DAG-derived order.
+  // Steps the DAG placed in the same "generation" get consecutive x-slots so
+  // that no two step cards ever share a horizontal position.
+  const stepsInDagOrder = [...steps].sort(
+    (a, b) => (column.get(a.id) ?? 0) - (column.get(b.id) ?? 0),
+  );
+  let nextStepCol = 0;
+  let prevDagCol = -1;
+  for (const step of stepsInDagOrder) {
+    const dagCol = column.get(step.id) ?? 0;
+    if (dagCol > prevDagCol) {
+      // Advancing to a new DAG generation: jump to at least that column index
+      nextStepCol = Math.max(nextStepCol, dagCol);
+      prevDagCol = dagCol;
+    }
+    column.set(step.id, nextStepCol);
+    nextStepCol++;
+  }
+  // All outcomes share the column right after the last step column
   const maxStepCol = Math.max(0, ...steps.map((s) => column.get(s.id) ?? 0));
-  const outcomeCol = maxStepCol + 1;
   for (const o of outcomeNodes) {
-    column.set(o.id, outcomeCol);
+    column.set(o.id, maxStepCol + 1);
   }
 
   const byColumn = new Map<number, string[]>();
   for (const [id, col] of column) {
     if (!byColumn.has(col)) byColumn.set(col, []);
     byColumn.get(col)!.push(id);
-  }
-
-  let maxRows = 0;
-  for (const ids of byColumn.values()) {
-    maxRows = Math.max(maxRows, ids.length);
   }
 
   const colX = new Map<number, number>();
@@ -126,24 +173,38 @@ function computeModalPositions(
     curX += (isOutcomeCol ? MODAL_OUTCOME_W : MODAL_STEP_W) + MODAL_COL_GAP;
   }
 
+  // Compute per-node card heights (dynamic, based on content counts)
+  const nodeHeights = new Map<string, number>();
+  const stepById = new Map(steps.map((s) => [s.id, s]));
+  for (const [id] of column) {
+    const step = stepById.get(id);
+    nodeHeights.set(id, step ? estimateStepCardHeight(step) : MODAL_OUTCOME_H);
+  }
+
+  // Compute total height per column so columns can be vertically centred
+  const colTotalHeights = new Map<number, number>();
+  for (const [col, ids] of byColumn) {
+    let h = 0;
+    for (const id of ids) h += nodeHeights.get(id) ?? MODAL_OUTCOME_H;
+    h += Math.max(0, ids.length - 1) * MODAL_ROW_GAP;
+    colTotalHeights.set(col, h);
+  }
+  const tallestColH = Math.max(0, ...colTotalHeights.values());
+
   const positions = new Map<string, { x: number; y: number }>();
 
   for (const [col, ids] of byColumn) {
     const x = colX.get(col) ?? MODAL_LEFT;
-    const isOutcomeCol = ids.every((id) => outcomeIds.has(id));
-    const cardH = isOutcomeCol ? MODAL_OUTCOME_H : MODAL_STEP_H_EST;
-    const totalH = ids.length * cardH + (ids.length - 1) * MODAL_ROW_GAP;
-    const tallestH = maxRows * cardH + (maxRows - 1) * MODAL_ROW_GAP;
-    const startY = MODAL_TOP + (tallestH - totalH) / 2;
-
-    ids.forEach((id, rowIdx) => {
-      const y = startY + rowIdx * (cardH + MODAL_ROW_GAP);
-      positions.set(id, { x, y });
-    });
+    const totalH = colTotalHeights.get(col) ?? 0;
+    const startY = MODAL_TOP + (tallestColH - totalH) / 2;
+    let cardY = startY;
+    for (const id of ids) {
+      positions.set(id, { x, y: cardY });
+      cardY += (nodeHeights.get(id) ?? MODAL_OUTCOME_H) + MODAL_ROW_GAP;
+    }
   }
 
-  // Position global timers above the target step's column, centered horizontally on it
-  const timerY = 80; // fixed top row, regardless of MODAL_TOP offset
+  const timerY = 80;
   for (let i = 0; i < globalTimers.length; i++) {
     const timer = globalTimers[i];
     const targetPos = positions.get(timer.targetStepId);
@@ -159,7 +220,6 @@ function computeModalPositions(
 // ─────────────────────────────────────────────────────────
 // Spotlight: backward BFS to find all steps + edges on any
 // path to the selected outcome.
-// edgeKeys format: "${stepId}-${dpIndex}"
 // ─────────────────────────────────────────────────────────
 
 function computePathsToOutcome(
@@ -169,10 +229,9 @@ function computePathsToOutcome(
   const reachableStepIds = new Set<string>();
   const reachableEdgeKeys = new Set<string>();
 
-  // Pass 1: direct outcome connections
   for (const step of steps) {
-    for (let i = 0; i < (step.decisionPoints?.length ?? 0); i++) {
-      const dp = step.decisionPoints![i];
+    for (let i = 0; i < (step.paths?.length ?? 0); i++) {
+      const dp = step.paths![i];
       if (dp.connections?.some((c) => c.targetNodeId === outcomeId)) {
         reachableStepIds.add(step.id);
         reachableEdgeKeys.add(`${step.id}-${i}`);
@@ -180,13 +239,12 @@ function computePathsToOutcome(
     }
   }
 
-  // Pass 2: BFS backwards through step-to-step edges
   let changed = true;
   while (changed) {
     changed = false;
     for (const step of steps) {
-      for (let i = 0; i < (step.decisionPoints?.length ?? 0); i++) {
-        const dp = step.decisionPoints![i];
+      for (let i = 0; i < (step.paths?.length ?? 0); i++) {
+        const dp = step.paths![i];
         if (dp.targetStepId && reachableStepIds.has(dp.targetStepId)) {
           const key = `${step.id}-${i}`;
           if (!reachableEdgeKeys.has(key)) {
@@ -212,7 +270,7 @@ const outcomeColor: Record<string, string> = {
 
 // ─────────────────────────────────────────────────────────
 
-const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
+const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: NodeCanvasProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -224,18 +282,27 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
   const [outcomeNodes, setOutcomeNodes] = useState<OutcomeNode[]>(scenario.outcomeNodes);
 
   // Modal mode: position map
-  const initialModalPositions = useMemo(
+  const computedModalPositions = useMemo(
     () => computeModalPositions(
       scenario.scenarioNode.steps ?? [],
       scenario.outcomeNodes,
       scenario.globalTimers,
     ),
+    // Recompute when the set of steps/outcomes changes (node added/removed)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [
+      scenario.scenarioNode.steps?.length,
+      scenario.outcomeNodes.length,
+      scenario.scenarioNode.id,
+    ],
   );
   const [modalPositions, setModalPositions] = useState<Map<string, { x: number; y: number }>>(
-    initialModalPositions,
+    computedModalPositions,
   );
+  // Keep positions in sync whenever the computed layout changes (e.g. steps added/removed)
+  useEffect(() => {
+    setModalPositions(computedModalPositions);
+  }, [computedModalPositions]);
 
   // Spotlight state (modal mode only)
   const [spotlightOutcomeId, setSpotlightOutcomeId] = useState<string | null>(null);
@@ -244,6 +311,16 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
+  // Drag guard: track where each drag started in client coords
+  const dragStartClientRef = useRef({ x: 0, y: 0 });
+  const isDragRef = useRef(false);
+
+  // Refs for current pan/zoom — used in effects without adding as deps
+  const panRef = useRef(pan);
+  const zoomRef = useRef(zoom);
+  useEffect(() => { panRef.current = pan; });
+  useEffect(() => { zoomRef.current = zoom; });
+
   const steps = scenario.scenarioNode.steps ?? [];
 
   const modalOutcomeIds = useMemo(
@@ -251,7 +328,6 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
     [scenario.outcomeNodes],
   );
 
-  // Compute spotlight path data
   const spotlightData = useMemo(() => {
     if (!spotlightOutcomeId) return null;
     return {
@@ -259,6 +335,33 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
       ...computePathsToOutcome(spotlightOutcomeId, steps),
     };
   }, [spotlightOutcomeId, steps]);
+
+  // ─── Clear local ring when panel is closed externally ───
+  useEffect(() => {
+    if (selectedStepId === null) {
+      setSelectedNodeId(null);
+    }
+  }, [selectedStepId]);
+
+  // ─── Auto-pan in modal mode so selected step isn't behind the panel ───
+  useEffect(() => {
+    if (!selectedStepId || displayMode !== "modal") return;
+    const pos = modalPositions.get(selectedStepId);
+    if (!pos) return;
+
+    const currentPan = panRef.current;
+    const currentZoom = zoomRef.current;
+
+    const nodeScreenRight = pos.x * currentZoom + currentPan.x + MODAL_STEP_W * currentZoom;
+    const availableWidth = window.innerWidth - PANEL_WIDTH - 20;
+
+    if (nodeScreenRight > availableWidth) {
+      const shift = nodeScreenRight - availableWidth;
+      setPan({ ...currentPan, x: currentPan.x - shift });
+    }
+    // Only react to selection changes — intentional eslint suppress
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStepId, displayMode]);
 
   // ─── Pan ───
   const handleCanvasMouseDown = useCallback(
@@ -274,6 +377,10 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (draggingNodeId) {
+        const dx = e.clientX - dragStartClientRef.current.x;
+        const dy = e.clientY - dragStartClientRef.current.y;
+        if (Math.hypot(dx, dy) > 5) isDragRef.current = true;
+
         const newX = (e.clientX - pan.x) / zoom - dragOffset.x;
         const newY = (e.clientY - pan.y) / zoom - dragOffset.y;
 
@@ -300,10 +407,33 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
     [isPanning, startPos, draggingNodeId, dragOffset, pan, zoom, scenarioNode.id, displayMode],
   );
 
-  const handleMouseUp = useCallback(() => {
-    setIsPanning(false);
-    setDraggingNodeId(null);
-  }, []);
+  // ─── Mouse up: drag guard → select step if it was a click ───
+  const handleMouseUp = useCallback(
+    (e: React.MouseEvent) => {
+      setIsPanning(false);
+      if (draggingNodeId) {
+        if (!isDragRef.current) {
+          // Was a click, not a drag
+          setSelectedNodeId((prev) => (prev === draggingNodeId ? null : draggingNodeId));
+
+          const isStep = steps.some((s) => s.id === draggingNodeId);
+          if (isStep && onSelectStep) {
+            onSelectStep(draggingNodeId === selectedStepId ? null : draggingNodeId);
+          }
+
+          // Spotlight for outcome clicks in modal mode
+          if (displayMode === "modal" && modalOutcomeIds.has(draggingNodeId)) {
+            setSpotlightOutcomeId((prev) =>
+              prev === draggingNodeId ? null : draggingNodeId
+            );
+          }
+        }
+      }
+      setDraggingNodeId(null);
+      isDragRef.current = false;
+    },
+    [draggingNodeId, steps, selectedStepId, onSelectStep, displayMode, modalOutcomeIds],
+  );
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -314,11 +444,12 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
   const handleNodeMouseDown = useCallback(
     (node: DraggableNode, e: React.MouseEvent) => {
       e.stopPropagation();
+      dragStartClientRef.current = { x: e.clientX, y: e.clientY };
+      isDragRef.current = false;
       const canvasX = (e.clientX - pan.x) / zoom;
       const canvasY = (e.clientY - pan.y) / zoom;
       setDragOffset({ x: canvasX - node.position.x, y: canvasY - node.position.y });
       setDraggingNodeId(node.id);
-      setSelectedNodeId(node.id);
     },
     [pan, zoom],
   );
@@ -327,29 +458,22 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
   const handleModalNodeMouseDown = useCallback(
     (nodeId: string, e: React.MouseEvent) => {
       e.stopPropagation();
+      dragStartClientRef.current = { x: e.clientX, y: e.clientY };
+      isDragRef.current = false;
       const pos = modalPositions.get(nodeId) ?? { x: 0, y: 0 };
       const canvasX = (e.clientX - pan.x) / zoom;
       const canvasY = (e.clientY - pan.y) / zoom;
       setDragOffset({ x: canvasX - pos.x, y: canvasY - pos.y });
       setDraggingNodeId(nodeId);
-      setSelectedNodeId(nodeId);
     },
     [pan, zoom, modalPositions],
   );
 
-  const handleNodeClick = useCallback((nodeId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSelectedNodeId((prev) => (prev === nodeId ? null : nodeId));
-    // In modal mode, clicking an outcome card toggles the spotlight
-    if (displayMode === "modal" && modalOutcomeIds.has(nodeId)) {
-      setSpotlightOutcomeId((prev) => (prev === nodeId ? null : nodeId));
-    }
-  }, [displayMode, modalOutcomeIds]);
-
   const handleCanvasClick = useCallback(() => {
     setSelectedNodeId(null);
     setSpotlightOutcomeId(null);
-  }, []);
+    onSelectStep?.(null);
+  }, [onSelectStep]);
 
   // ─── Canvas size ───
   const SCENARIO_CARD_W = 500;
@@ -358,11 +482,14 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
 
   const canvasSize = useMemo(() => {
     if (displayMode === "modal") {
+      const stepById = new Map(steps.map((s) => [s.id, s]));
       let maxX = 0;
       let maxY = 0;
-      for (const pos of modalPositions.values()) {
+      for (const [id, pos] of modalPositions) {
+        const step = stepById.get(id);
+        const cardH = step ? estimateStepCardHeight(step) : MODAL_OUTCOME_H;
         maxX = Math.max(maxX, pos.x + MODAL_STEP_W);
-        maxY = Math.max(maxY, pos.y + MODAL_OUTCOME_H);
+        maxY = Math.max(maxY, pos.y + cardH);
       }
       return { width: maxX + 200, height: maxY + 200 };
     }
@@ -382,7 +509,6 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
   const globalTimers = scenario.globalTimers ?? [];
   const totalNodes = steps.length + outcomeNodes.length + globalTimers.length;
 
-  // ─── Modal outcome nodes with positions from modalPositions ───
   const modalOutcomeNodes = useMemo(
     () =>
       scenario.outcomeNodes.map((o) => ({
@@ -400,7 +526,11 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
       onMouseDown={handleCanvasMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      onMouseLeave={() => {
+        setIsPanning(false);
+        setDraggingNodeId(null);
+        isDragRef.current = false;
+      }}
       onWheel={handleWheel}
       onClick={handleCanvasClick}
     >
@@ -408,8 +538,8 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
         <h1 className="text-lg font-bold text-foreground">{scenario.title}</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
           {displayMode === "modal"
-            ? `${totalNodes} nodes · ${steps.length} steps · ${scenario.outcomeNodes.length} outcomes · Scroll to zoom · Drag to pan/move`
-            : `${1 + outcomeNodes.length} nodes · ${scenarioNode.steps?.length || 0} steps · Scroll to zoom · Drag canvas to pan · Drag nodes to move`}
+            ? `${totalNodes} nodes · ${steps.length} steps · ${scenario.outcomeNodes.length} outcomes · Scroll to zoom · Drag to pan/move · Click step to inspect`
+            : `${1 + outcomeNodes.length} nodes · ${scenarioNode.steps?.length || 0} steps · Scroll to zoom · Drag canvas to pan · Click step to inspect`}
         </p>
 
         {/* Spotlight pill bar — modal mode only */}
@@ -480,13 +610,13 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
 
             {steps.map((step, idx) => {
               const pos = modalPositions.get(step.id) ?? { x: 0, y: 0 };
+              const isStepSelected = selectedStepId === step.id || selectedNodeId === step.id;
 
-              // Compute spotlight state for this step
               const stepSpotlight = spotlightData
                 ? {
                     dimmed: !spotlightData.reachableStepIds.has(step.id),
                     fadedDpIndices: new Set(
-                      (step.decisionPoints ?? [])
+                      (step.paths ?? [])
                         .map((_, i) => i)
                         .filter(
                           (i) =>
@@ -502,9 +632,8 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
                   step={step}
                   stepIndex={idx}
                   position={pos}
-                  isSelected={selectedNodeId === step.id}
+                  isSelected={isStepSelected}
                   onMouseDown={(e) => handleModalNodeMouseDown(step.id, e)}
-                  onClick={(e) => handleNodeClick(step.id, e)}
                   spotlight={stepSpotlight}
                 />
               );
@@ -523,7 +652,7 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
                   node={node}
                   isSelected={selectedNodeId === node.id}
                   onMouseDown={(e) => handleModalNodeMouseDown(node.id, e)}
-                  onClick={(e) => handleNodeClick(node.id, e)}
+                  onClick={(e) => e.stopPropagation()}
                   spotlightState={spotlightState}
                 />
               );
@@ -538,7 +667,7 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
                   position={pos}
                   isSelected={selectedNodeId === timer.id}
                   onMouseDown={(e) => handleModalNodeMouseDown(timer.id, e)}
-                  onClick={(e) => handleNodeClick(timer.id, e)}
+                  onClick={(e) => e.stopPropagation()}
                 />
               );
             })}
@@ -551,8 +680,10 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
               node={scenarioNode}
               isSelected={selectedNodeId === scenarioNode.id}
               onMouseDown={(e) => handleNodeMouseDown(scenarioNode, e)}
-              onClick={(e) => handleNodeClick(scenarioNode.id, e)}
+              onClick={(e) => e.stopPropagation()}
               displayMode={displayMode}
+              selectedStepId={selectedStepId}
+              onSelectStep={onSelectStep}
             />
 
             {outcomeNodes.map((node) => (
@@ -561,7 +692,7 @@ const NodeCanvas = ({ scenario, displayMode }: NodeCanvasProps) => {
                 node={node}
                 isSelected={selectedNodeId === node.id}
                 onMouseDown={(e) => handleNodeMouseDown(node, e)}
-                onClick={(e) => handleNodeClick(node.id, e)}
+                onClick={(e) => e.stopPropagation()}
               />
             ))}
           </>
