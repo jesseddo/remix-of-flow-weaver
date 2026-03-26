@@ -41,6 +41,8 @@ interface Line {
   startY: number;
   endX: number;
   endY: number;
+  /** Extra vertical nudge applied to departure point to fan out arrows from the same step */
+  startYOffset: number;
   color: string;
   type: ConnectionType;
   timeoutLabel?: string;
@@ -154,6 +156,7 @@ const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTi
             startY,
             endX,
             endY,
+            startYOffset: 0,
             color: getColor(info.type),
             type: info.type,
             timeoutLabel: info.timeoutLabel,
@@ -162,6 +165,7 @@ const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTi
           });
     });
 
+    // Spread arrival points when multiple arrows share the same target
     const targetGroups = new Map<string, number[]>();
     newLines.forEach((line, idx) => {
       const key = `${Math.round(line.endX)},${Math.round(line.endY)}`;
@@ -176,6 +180,24 @@ const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTi
       const SPREAD = 18;
       indices.forEach((idx, j) => {
         newLines[idx].endY += (j - (n - 1) / 2) * SPREAD;
+      });
+    });
+
+    // Spread departure points when multiple arrows leave from the same source step
+    const sourceGroups = new Map<string, number[]>();
+    newLines.forEach((line, idx) => {
+      const key = `${Math.round(line.startX)}`;
+      if (!sourceGroups.has(key)) sourceGroups.set(key, []);
+      sourceGroups.get(key)!.push(idx);
+    });
+
+    sourceGroups.forEach((indices) => {
+      if (indices.length <= 1) return;
+      indices.sort((a, b) => newLines[a].endY - newLines[b].endY);
+      const n = indices.length;
+      const SPREAD = 14;
+      indices.forEach((idx, j) => {
+        newLines[idx].startYOffset = (j - (n - 1) / 2) * SPREAD;
       });
     });
 
@@ -231,12 +253,23 @@ const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTi
       </defs>
 
       {lines.map((line, i) => {
-        const dx = Math.max(40, Math.abs(line.endX - line.startX) * 0.35);
-        const d = `M${line.startX},${line.startY} C${line.startX + dx},${line.startY} ${line.endX - dx},${line.endY} ${line.endX},${line.endY}`;
+        const sx = line.startX;
+        const sy = line.startY + line.startYOffset;
+        const ex = line.endX;
+        const ey = line.endY;
+        const dx = Math.max(60, Math.abs(ex - sx) * 0.4);
+        // Arc the control points vertically so parallel arrows naturally separate
+        const vertFrac = 0.18;
+        const dy = ey - sy;
+        const cp1x = sx + dx;
+        const cp1y = sy + dy * vertFrac;
+        const cp2x = ex - dx;
+        const cp2y = ey - dy * vertFrac;
+        const d = `M${sx},${sy} C${cp1x},${cp1y} ${cp2x},${cp2y} ${ex},${ey}`;
 
         // Midpoint of the cubic bezier at t=0.5
-        const midX = (line.startX + 3 * (line.startX + dx) + 3 * (line.endX - dx) + line.endX) / 8;
-        const midY = (line.startY + 3 * line.startY + 3 * line.endY + line.endY) / 8;
+        const midX = (sx + 3 * cp1x + 3 * cp2x + ex) / 8;
+        const midY = (sy + 3 * cp1y + 3 * cp2y + ey) / 8;
 
         const isGlobalTimer = line.type === "global-timer";
         const isSpotlit = isGlobalTimer || !spotlightEdgeKeys || spotlightEdgeKeys.has(line.dpKey);

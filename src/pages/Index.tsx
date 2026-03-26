@@ -6,7 +6,10 @@ import { useScenarioEditor } from "@/hooks/useScenarioEditor";
 import originalJson from "@/data/scenarios.json";
 import scriptJson from "@/data/scenarios-script.json";
 import { JsonScenario } from "@/data/transformScenario";
-import { Download, Library } from "lucide-react";
+import { ExportStatus } from "@/utils/exportToJson";
+import { Download, Library, PenLine } from "lucide-react";
+
+export type AuthoringMode = "canvas" | "library";
 
 export type DisplayMode = "steps" | "grouped" | "modal";
 
@@ -17,7 +20,7 @@ const sources = [
 
 const Index = () => {
   const [sourceKey, setSourceKey] = useState(sources[0].key);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>("steps");
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("modal");
 
   const availableScenarios = useMemo(() => {
     const src = sources.find((s) => s.key === sourceKey)!;
@@ -43,6 +46,8 @@ const Index = () => {
   );
 
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [exportStatus, setExportStatus] = useState<ExportStatus>("review");
+  const [authoringMode, setAuthoringMode] = useState<AuthoringMode>("canvas");
 
   const editor = useScenarioEditor(activeJsonScenario);
 
@@ -65,6 +70,16 @@ const Index = () => {
   }, [editor.selectedStepId, editor.data]);
 
   const allSteps = editor.data?.scenarioNode.steps ?? [];
+
+  const handleAuthoringModeChange = useCallback((mode: AuthoringMode) => {
+    setAuthoringMode(mode);
+    if (mode === "library") setLibraryOpen(true);
+  }, []);
+
+  const handleAddStep = useCallback(() => {
+    const newId = editor.addStep();
+    editor.setSelectedStepId(newId);
+  }, [editor]);
 
   if (availableScenarios.length === 0) {
     return (
@@ -118,6 +133,27 @@ const Index = () => {
           ))}
         </div>
 
+        {/* Authoring mode toggle */}
+        <div className="flex items-center rounded-lg border border-border bg-background shadow-sm overflow-hidden">
+          <span className="flex items-center gap-1 pl-3 pr-2 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider border-r border-border">
+            <PenLine className="w-3 h-3" />
+            Authoring
+          </span>
+          {(["canvas", "library"] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => handleAuthoringModeChange(mode)}
+              className={`px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
+                authoringMode === mode
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+
         {/* Scenario dropdown */}
         {availableScenarios.length > 1 && (
           <select
@@ -147,18 +183,31 @@ const Index = () => {
           Library
         </button>
 
-        {/* Export JSON */}
-        <button
-          onClick={editor.exportToJson}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-border bg-background shadow-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          title={editor.isDirty ? "You have unsaved changes — click to download" : "Download edited scenario as JSON"}
-        >
-          <Download className="w-3.5 h-3.5" />
-          Export
-          {editor.isDirty && (
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-          )}
-        </button>
+        {/* Export group: status selector + download */}
+        <div className="flex items-center rounded-lg border border-border bg-background shadow-sm overflow-hidden">
+          <select
+            value={exportStatus}
+            onChange={(e) => setExportStatus(e.target.value as ExportStatus)}
+            title="Set the scenario status for this export"
+            className="px-2 py-1.5 text-xs font-medium text-muted-foreground bg-transparent border-r border-border outline-none hover:bg-muted transition-colors cursor-pointer"
+          >
+            <option value="draft">Draft</option>
+            <option value="review">Review</option>
+            <option value="approved">Approved</option>
+            <option value="available">Available</option>
+          </select>
+          <button
+            onClick={() => editor.exportToJson({ status: exportStatus, bumpVersion: true })}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title={editor.isDirty ? "You have unsaved changes — click to download" : "Download edited scenario as JSON"}
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export
+            {editor.isDirty && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Canvas */}
@@ -169,6 +218,7 @@ const Index = () => {
           displayMode={displayMode}
           selectedStepId={editor.selectedStepId}
           onSelectStep={editor.setSelectedStepId}
+          onAddStep={authoringMode === "canvas" ? handleAddStep : undefined}
         />
       ) : (
         <div className="flex items-center justify-center h-screen text-muted-foreground">
@@ -181,12 +231,24 @@ const Index = () => {
         isOpen={libraryOpen}
         data={editor.data}
         onClose={() => setLibraryOpen(false)}
+        authoringMode={authoringMode}
+        steps={allSteps}
+        selectedStepId={editor.selectedStepId}
+        onSelectStep={(id) => editor.setSelectedStepId(id)}
+        onAddStep={handleAddStep}
+        onUpdateScenarioMeta={editor.updateScenarioMeta}
         onAddPersona={editor.addPersonaToCatalog}
         onUpdatePersona={editor.updatePersonaCatalog}
         onDeletePersona={editor.deletePersonaFromCatalog}
         onAddResource={editor.addResourceToCatalog}
         onUpdateResource={editor.updateResourceCatalog}
         onDeleteResource={editor.deleteResourceFromCatalog}
+        onAddOutcome={editor.addOutcome}
+        onUpdateOutcome={editor.updateOutcome}
+        onDeleteOutcome={editor.deleteOutcome}
+        onAddTimer={editor.addTimer}
+        onUpdateTimer={editor.updateTimer}
+        onDeleteTimer={editor.deleteTimer}
       />
 
       {/* Step detail panel — fixed, slides in from the right */}

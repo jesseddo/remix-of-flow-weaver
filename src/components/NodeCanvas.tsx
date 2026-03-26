@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
+import { Plus } from "lucide-react";
 import { ScenarioData, ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer } from "@/types/scenario";
 import { ScenarioCard, OutcomeCard, ModalStepCard, GlobalTimerCard } from "./NodeCard";
 import FlowConnections from "./FlowConnections";
@@ -10,6 +11,7 @@ interface NodeCanvasProps {
   displayMode: DisplayMode;
   selectedStepId?: string | null;
   onSelectStep?: (stepId: string | null) => void;
+  onAddStep?: () => void;
 }
 
 type DraggableNode = ScenarioNode | OutcomeNode;
@@ -270,7 +272,7 @@ const outcomeColor: Record<string, string> = {
 
 // ─────────────────────────────────────────────────────────
 
-const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: NodeCanvasProps) => {
+const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep, onAddStep }: NodeCanvasProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -535,12 +537,27 @@ const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: Nod
       onClick={handleCanvasClick}
     >
       <div className="absolute top-0 left-0 right-0 z-10 px-6 py-3 bg-background/80 backdrop-blur-sm border-b border-border">
-        <h1 className="text-lg font-bold text-foreground">{scenario.title}</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {displayMode === "modal"
-            ? `${totalNodes} nodes · ${steps.length} steps · ${scenario.outcomeNodes.length} outcomes · Scroll to zoom · Drag to pan/move · Click step to inspect`
-            : `${1 + outcomeNodes.length} nodes · ${scenarioNode.steps?.length || 0} steps · Scroll to zoom · Drag canvas to pan · Click step to inspect`}
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-bold text-foreground">{scenario.title}</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {displayMode === "modal"
+                ? `${totalNodes} nodes · ${steps.length} steps · ${scenario.outcomeNodes.length} outcomes · Scroll to zoom · Drag to pan/move · Click step to inspect`
+                : `${1 + outcomeNodes.length} nodes · ${scenarioNode.steps?.length || 0} steps · Scroll to zoom · Drag canvas to pan · Click step to inspect`}
+            </p>
+          </div>
+
+          {/* "+ Add Step" chip — canvas authoring mode, modal view only */}
+          {displayMode === "modal" && onAddStep && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onAddStep(); }}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Step
+            </button>
+          )}
+        </div>
 
         {/* Spotlight pill bar — modal mode only */}
         {displayMode === "modal" && scenario.outcomeNodes.length > 0 && (

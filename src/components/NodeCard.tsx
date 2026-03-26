@@ -100,6 +100,23 @@ interface OutcomeCardProps {
   spotlightState?: "target" | "dimmed" | "none";
 }
 
+// ── Completeness indicators ───────────────────────────────────────
+type CompletenessGap = { key: string; label: string; color: string; dot: string };
+
+function getCompletenessGaps(step: ScenarioStep): CompletenessGap[] {
+  const gaps: CompletenessGap[] = [];
+  if (!step.tasks || step.tasks.length === 0) {
+    gaps.push({ key: "tasks", label: "No tasks", color: "hsl(38, 90%, 38%)", dot: "hsl(38, 90%, 52%)" });
+  }
+  if (!step.paths || step.paths.length === 0) {
+    gaps.push({ key: "paths", label: "Dead end — no paths", color: "hsl(0, 65%, 42%)", dot: "hsl(0, 65%, 55%)" });
+  }
+  if (!step.evaluation) {
+    gaps.push({ key: "eval", label: "No evaluation", color: "hsl(220, 60%, 42%)", dot: "hsl(220, 60%, 55%)" });
+  }
+  return gaps;
+}
+
 const StepRow = ({
   step,
   index,
@@ -113,6 +130,7 @@ const StepRow = ({
 }) => {
   const cfg = typeConfig[step.type];
   const Icon = cfg.icon;
+  const gaps = getCompletenessGaps(step);
 
   return (
     <div className="relative">
@@ -131,17 +149,40 @@ const StepRow = ({
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-1">
             <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
               style={{ background: `hsl(var(--node-${step.type}))`, color: "white" }}
             >
               {index + 1}
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <h4 className="font-semibold text-xs text-card-foreground leading-tight">
                 {step.title}
               </h4>
               {step.persona && (
                 <p className="text-[10px] text-muted-foreground mt-0.5">{step.persona}</p>
+              )}
+              {/* Completeness gap indicators */}
+              {gaps.length > 0 && (
+                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                  {gaps.map((gap) => (
+                    <span
+                      key={gap.key}
+                      title={gap.label}
+                      className="inline-flex items-center gap-0.5 text-[8px] font-semibold px-1 py-0.5 rounded-full"
+                      style={{
+                        background: gap.dot + "18",
+                        color: gap.color,
+                        border: `1px solid ${gap.dot}44`,
+                      }}
+                    >
+                      <span
+                        className="w-1 h-1 rounded-full shrink-0"
+                        style={{ background: gap.dot }}
+                      />
+                      {gap.label}
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
           </div>

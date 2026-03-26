@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { ScenarioData, ScenarioTask, ScenarioPath, PrerequisiteCondition, OutcomeType, StepConnection, Persona, ScenarioResource } from "@/types/scenario";
+import { ScenarioData, ScenarioStep, ScenarioTask, ScenarioPath, PrerequisiteCondition, OutcomeType, StepConnection, Persona, ScenarioResource, OutcomeNode, GlobalTimer, NodeType } from "@/types/scenario";
 import { transformScenario, JsonScenario } from "@/data/transformScenario";
-import { exportToJsonFile } from "@/utils/exportToJson";
+import { exportToJsonFile, ExportMeta } from "@/utils/exportToJson";
 
 export interface UpdatePathPatch {
   label?: string;
   prerequisite?: PrerequisiteCondition;
+  timeoutMs?: number;
 }
 
 export interface UpdateTaskPatch {
@@ -24,6 +25,8 @@ export interface UpdateStepPatch {
   title?: string;
   description?: string;
   resource?: string;
+  type?: NodeType;
+  flowType?: "conditional" | "gated" | "linear" | "interruption";
 }
 
 export interface UpdateEvaluationPatch {
@@ -31,6 +34,11 @@ export interface UpdateEvaluationPatch {
   competencyId?: string;
   weight?: "high" | "medium" | "low";
   requirement?: string;
+}
+
+export interface UpdateScenarioMetaPatch {
+  title?: string;
+  description?: string;
 }
 
 export type PathTarget =
@@ -70,9 +78,17 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
               step.id === stepId
                 ? {
                     ...step,
-                    paths: step.paths?.map((path) =>
-                      path.id === pathId ? { ...path, ...patch } : path
-                    ),
+                    paths: step.paths?.map((path) => {
+                      if (path.id !== pathId) return path;
+                      const updated = { ...path, ...patch };
+                      // Keep timeoutMs only if a valid value was provided
+                      if (patch.timeoutMs !== undefined && patch.timeoutMs <= 0) {
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                        const { timeoutMs: _t, ...rest } = updated;
+                        return rest;
+                      }
+                      return updated;
+                    }),
                   }
                 : step
             ),
@@ -412,9 +428,136 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
     [markDirty]
   );
 
-  const exportToJson = useCallback(() => {
+  // ── Scenario meta ────────────────────────────────────────────────
+
+  const updateScenarioMeta = useCallback(
+    (patch: UpdateScenarioMetaPatch) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          ...(patch.title !== undefined ? { title: patch.title } : {}),
+          scenarioNode: {
+            ...prev.scenarioNode,
+            ...(patch.description !== undefined ? { description: patch.description } : {}),
+          },
+        };
+      });
+      markDirty();
+    },
+    [markDirty]
+  );
+
+  // ── Outcome nodes ────────────────────────────────────────────────
+
+  const addOutcome = useCallback(
+    (outcome: OutcomeNode) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return { ...prev, outcomeNodes: [...prev.outcomeNodes, outcome] };
+      });
+      markDirty();
+    },
+    [markDirty]
+  );
+
+  const updateOutcome = useCallback(
+    (id: string, patch: Partial<OutcomeNode>) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          outcomeNodes: prev.outcomeNodes.map((o) => (o.id === id ? { ...o, ...patch } : o)),
+        };
+      });
+      markDirty();
+    },
+    [markDirty]
+  );
+
+  const deleteOutcome = useCallback(
+    (id: string) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return { ...prev, outcomeNodes: prev.outcomeNodes.filter((o) => o.id !== id) };
+      });
+      markDirty();
+    },
+    [markDirty]
+  );
+
+  // ── Global timers ────────────────────────────────────────────────
+
+  const addTimer = useCallback(
+    (timer: GlobalTimer) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return { ...prev, globalTimers: [...prev.globalTimers, timer] };
+      });
+      markDirty();
+    },
+    [markDirty]
+  );
+
+  const updateTimer = useCallback(
+    (id: string, patch: Partial<GlobalTimer>) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          globalTimers: prev.globalTimers.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+        };
+      });
+      markDirty();
+    },
+    [markDirty]
+  );
+
+  const deleteTimer = useCallback(
+    (id: string) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return { ...prev, globalTimers: prev.globalTimers.filter((t) => t.id !== id) };
+      });
+      markDirty();
+    },
+    [markDirty]
+  );
+
+  // ── Steps ──────────────────────────────────────────────────────────
+
+  const addStep = useCallback(
+    (title?: string): string => {
+      const newId = crypto.randomUUID();
+      const newStep: ScenarioStep = {
+        id: newId,
+        title: title ?? "New Step",
+        type: "chat",
+        description: "",
+        tags: [],
+        flowType: "linear",
+        tasks: [],
+        paths: [],
+      };
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          scenarioNode: {
+            ...prev.scenarioNode,
+            steps: [...(prev.scenarioNode.steps ?? []), newStep],
+          },
+        };
+      });
+      markDirty();
+      return newId;
+    },
+    [markDirty]
+  );
+
+  const exportToJson = useCallback((exportMeta?: ExportMeta) => {
     if (!data || !originalJson) return;
-    exportToJsonFile(data, originalJson);
+    exportToJsonFile(data, originalJson, exportMeta);
     setIsDirty(false);
   }, [data, originalJson]);
 
@@ -441,6 +584,14 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
     addResourceToCatalog,
     updateResourceCatalog,
     deleteResourceFromCatalog,
+    updateScenarioMeta,
+    addOutcome,
+    updateOutcome,
+    deleteOutcome,
+    addTimer,
+    updateTimer,
+    deleteTimer,
+    addStep,
     exportToJson,
   };
 }

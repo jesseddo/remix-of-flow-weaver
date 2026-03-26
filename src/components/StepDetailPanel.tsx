@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  ScenarioStep, ScenarioTask, ScenarioPath, OutcomeNode, PrerequisiteCondition, Persona, ScenarioResource,
+  ScenarioStep, ScenarioTask, ScenarioPath, OutcomeNode, PrerequisiteCondition, Persona, ScenarioResource, NodeType,
 } from "@/types/scenario";
 import {
   UpdatePathPatch, UpdateTaskPatch, UpdatePersonaPatch, UpdateStepPatch, PathTarget, UpdateEvaluationPatch,
@@ -11,7 +11,7 @@ import { COMPETENCY_RUBRIC } from "@/data/competencyRubric";
 import {
   MessageSquare, Radio, FileText, Video, X, User,
   ChevronRight, AlertTriangle, CheckCircle2, XCircle,
-  Plus, Trash2,
+  Plus, Trash2, Clock,
 } from "lucide-react";
 import type { OutcomeType } from "@/types/scenario";
 
@@ -52,12 +52,14 @@ const typeConfig: Record<string, { icon: typeof MessageSquare; label: string; cs
   video:    { icon: Video,         label: "Video",    cssVar: "--node-video" },
 };
 
-const flowBadgeStyle: Record<string, string> = {
-  conditional:  "bg-node-warning/15 text-node-warning",
-  gated:        "bg-node-document/15 text-node-document",
-  interruption: "bg-destructive/15 text-destructive",
-  linear:       "bg-muted text-muted-foreground",
-};
+const NODE_TYPES: NodeType[] = ["chat", "radio", "document", "video"];
+
+const FLOW_TYPES: Array<{ value: ScenarioStep["flowType"]; label: string }> = [
+  { value: "linear",       label: "Linear" },
+  { value: "conditional",  label: "Conditional" },
+  { value: "gated",        label: "Gated" },
+  { value: "interruption", label: "Interruption" },
+];
 
 // ── Outcome badge ────────────────────────────────────────────────
 const outcomeStyles: Record<OutcomeType, { color: string; bg: string; border: string; icon: typeof CheckCircle2 }> = {
@@ -93,6 +95,13 @@ const SectionHeader = ({ label, count }: { label: string; count?: number }) => (
     )}
     <div className="flex-1 h-px bg-border/50" />
   </div>
+);
+
+// ── Empty state hint ─────────────────────────────────────────────
+const EmptyHint = ({ text }: { text: string }) => (
+  <p className="px-4 pb-2 text-[10px] text-muted-foreground/50 italic leading-relaxed">
+    {text}
+  </p>
 );
 
 // ── Toggle pill ──────────────────────────────────────────────────
@@ -284,6 +293,10 @@ const PathRow = ({
   const isOutcomeConn = path.connections && path.connections.length > 0;
   const currentTargetId = path.connections?.[0]?.targetNodeId ?? path.targetStepId ?? "";
   const [editingTarget, setEditingTarget] = useState(false);
+  const [editingTimeout, setEditingTimeout] = useState(false);
+  const [timeoutSeconds, setTimeoutSeconds] = useState(
+    path.timeoutMs !== undefined ? Math.round(path.timeoutMs / 1000) : 60
+  );
 
   const availableTargets: Array<{ id: string; label: string; group: string }> = [
     ...allSteps
@@ -336,12 +349,7 @@ const PathRow = ({
       >
         <div className="flex items-start gap-2">
           {isTimeout ? (
-            <span
-              className="text-[8px] font-bold uppercase tracking-wider shrink-0 px-1.5 py-0.5 rounded-full mt-0.5"
-              style={{ background: "hsl(38, 90%, 92%)", color: "hsl(38, 75%, 38%)", border: "1px solid hsl(38, 75%, 82%)" }}
-            >
-              Timeout
-            </span>
+            <Clock className="w-3 h-3 text-amber-600 shrink-0 mt-1" />
           ) : (
             <User className="w-3 h-3 text-primary shrink-0 mt-1" />
           )}
@@ -358,7 +366,43 @@ const PathRow = ({
           />
         </div>
 
-        {/* Target row — read-only display with "Change" affordance */}
+        {/* Timeout duration row — only for timeout paths */}
+        {isTimeout && (
+          <div className="flex items-center gap-2 pl-5">
+            <span className="text-[9px] text-amber-700/70">Fires after</span>
+            {editingTimeout ? (
+              <input
+                type="number"
+                value={timeoutSeconds}
+                min={1}
+                autoFocus
+                onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
+                onBlur={() => {
+                  onUpdatePath(step.id, path.id, { timeoutMs: timeoutSeconds * 1000 });
+                  setEditingTimeout(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    onUpdatePath(step.id, path.id, { timeoutMs: timeoutSeconds * 1000 });
+                    setEditingTimeout(false);
+                  }
+                  if (e.key === "Escape") setEditingTimeout(false);
+                }}
+                className="w-16 text-[10px] font-mono rounded border border-amber-300 bg-white px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-amber-300 text-center"
+              />
+            ) : (
+              <button
+                onClick={() => { setTimeoutSeconds(Math.round((path.timeoutMs ?? 60000) / 1000)); setEditingTimeout(true); }}
+                className="text-[10px] font-mono font-semibold text-amber-700 hover:text-amber-900 transition-colors px-1.5 py-0.5 rounded hover:bg-amber-100"
+              >
+                {Math.round((path.timeoutMs ?? 60000) / 1000)}s
+              </button>
+            )}
+            <span className="text-[9px] text-amber-700/70">then →</span>
+          </div>
+        )}
+
+        {/* Target row */}
         <div className="flex items-center gap-2 pl-5">
           {editingTarget ? (
             <select
@@ -402,14 +446,12 @@ const PathRow = ({
           ) : (
             <>
               {targetDisplay}
-              {!isTimeout && (
-                <button
-                  onClick={() => setEditingTarget(true)}
-                  className="ml-auto text-[9px] text-muted-foreground/40 hover:text-primary transition-colors"
-                >
-                  Change
-                </button>
-              )}
+              <button
+                onClick={() => setEditingTarget(true)}
+                className="ml-auto text-[9px] text-muted-foreground/40 hover:text-primary transition-colors"
+              >
+                Change
+              </button>
             </>
           )}
         </div>
@@ -568,7 +610,10 @@ const EvaluationSection = ({
 
   if (!ev) {
     return (
-      <AddButton label="Add evaluation criteria" onClick={() => onAddEvaluation(step.id)} />
+      <>
+        <EmptyHint text="Competency measured at this step — used to score the learner's overall performance." />
+        <AddButton label="Add evaluation criteria" onClick={() => onAddEvaluation(step.id)} />
+      </>
     );
   }
 
@@ -705,7 +750,6 @@ export const StepDetailPanel = ({
 
   const isOpen = step !== null;
   const cfg = step ? typeConfig[step.type] ?? typeConfig.chat : null;
-  const Icon = cfg?.icon ?? MessageSquare;
 
   const handleAddTask = () => {
     if (!step) return;
@@ -758,27 +802,44 @@ export const StepDetailPanel = ({
                   className="font-bold text-sm text-foreground leading-tight"
                 />
               </div>
-              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                <span
-                  className="flex items-center gap-1 text-[9px] font-semibold"
-                  style={{ color: `hsl(var(${cfg.cssVar}))` }}
+
+              {/* Type picker + flowType select */}
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                {/* Step type segmented control */}
+                <div className="flex items-center rounded-md overflow-hidden border border-border/50">
+                  {NODE_TYPES.map((t) => {
+                    const tcfg = typeConfig[t];
+                    const TypeIcon = tcfg.icon;
+                    const isActive = step.type === t;
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => onUpdateStep(step.id, { type: t })}
+                        title={tcfg.label}
+                        className="flex items-center gap-1 px-2 py-1 text-[9px] font-semibold transition-colors"
+                        style={
+                          isActive
+                            ? { background: `hsl(var(${tcfg.cssVar}))`, color: "white" }
+                            : { background: "hsl(var(--secondary) / 0.3)", color: "hsl(var(--muted-foreground))" }
+                        }
+                      >
+                        <TypeIcon className="w-2.5 h-2.5" />
+                        {tcfg.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Flow type select */}
+                <select
+                  value={step.flowType}
+                  onChange={(e) => onUpdateStep(step.id, { flowType: e.target.value as ScenarioStep["flowType"] })}
+                  className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border border-border/50 outline-none bg-background text-muted-foreground hover:text-foreground focus:ring-2 focus:ring-primary/30 transition-all cursor-pointer"
                 >
-                  <Icon className="w-2.5 h-2.5" />
-                  {cfg.label}
-                </span>
-                <span className="text-muted-foreground/30 text-[9px]">·</span>
-                <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${flowBadgeStyle[step.flowType]}`}>
-                  {step.flowType}
-                </span>
-                {step.resource && (
-                  <>
-                    <span className="text-muted-foreground/30 text-[9px]">·</span>
-                    <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
-                      <FileText className="w-2.5 h-2.5" />
-                      {step.resource}
-                    </span>
-                  </>
-                )}
+                  {FLOW_TYPES.map((ft) => (
+                    <option key={ft.value} value={ft.value}>{ft.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <button
@@ -792,7 +853,7 @@ export const StepDetailPanel = ({
           {/* ── Scrollable content ─────────────────────────────── */}
           <div className="flex-1 overflow-y-auto">
 
-            {/* Step — description */}
+            {/* Step description */}
             <SectionHeader label="Step" />
             <div className="px-4 pb-1">
               <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60">
@@ -806,6 +867,55 @@ export const StepDetailPanel = ({
                 className="mt-1 w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all resize-none"
               />
             </div>
+
+            {/* Tasks */}
+            <SectionHeader label="Tasks" count={step.tasks?.length ?? 0} />
+            {(step.tasks ?? []).length === 0 && (
+              <EmptyHint text="Actions the learner must take before proceeding — checked by the simulation engine." />
+            )}
+            {(step.tasks ?? []).map((task) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                stepId={step.id}
+                allTasks={step.tasks ?? []}
+                onUpdateTask={onUpdateTask}
+                onDeleteTask={onDeleteTask}
+                autoFocus={task.id === justAddedTaskId}
+                onAutoFocusDone={() => setJustAddedTaskId(null)}
+              />
+            ))}
+            <AddButton label="Add task" onClick={handleAddTask} />
+
+            {/* Decision Points */}
+            <SectionHeader label="Decision Points" count={step.paths?.length ?? 0} />
+            {(step.paths ?? []).length === 0 && !showAddPath && (
+              <EmptyHint text="Choices or branches available from this step — each leads to another step or an outcome." />
+            )}
+            {(step.paths ?? []).map((path) => (
+              <PathRow
+                key={path.id}
+                path={path}
+                step={step}
+                allSteps={allSteps}
+                outcomeNodes={outcomeNodes}
+                onUpdatePath={onUpdatePath}
+                onDeletePath={onDeletePath}
+                onSetPathTarget={onSetPathTarget}
+              />
+            ))}
+            {showAddPath ? (
+              <AddPathForm
+                step={step}
+                stepIndex={stepIndex}
+                allSteps={allSteps}
+                outcomeNodes={outcomeNodes}
+                onAdd={handleAddPath}
+                onCancel={() => setShowAddPath(false)}
+              />
+            ) : (
+              <AddButton label="Add decision point" onClick={() => setShowAddPath(true)} />
+            )}
 
             {/* Persona */}
             <SectionHeader label="Persona" />
@@ -837,7 +947,6 @@ export const StepDetailPanel = ({
                     placeholder="Character name… (add characters in Library)"
                   />
                 )}
-                {/* Show matched character detail as a subtle hint */}
                 {step.persona && personas.length > 0 && (() => {
                   const matched = personas.find((p) => p.name === step.persona);
                   if (!matched) return null;
@@ -963,49 +1072,6 @@ export const StepDetailPanel = ({
                 })()}
               </div>
             </div>
-
-            {/* Tasks */}
-            <SectionHeader label="Tasks" count={step.tasks?.length ?? 0} />
-            {(step.tasks ?? []).map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                stepId={step.id}
-                allTasks={step.tasks ?? []}
-                onUpdateTask={onUpdateTask}
-                onDeleteTask={onDeleteTask}
-                autoFocus={task.id === justAddedTaskId}
-                onAutoFocusDone={() => setJustAddedTaskId(null)}
-              />
-            ))}
-            <AddButton label="Add task" onClick={handleAddTask} />
-
-            {/* Decision Points */}
-            <SectionHeader label="Decision Points" count={step.paths?.length ?? 0} />
-            {(step.paths ?? []).map((path) => (
-              <PathRow
-                key={path.id}
-                path={path}
-                step={step}
-                allSteps={allSteps}
-                outcomeNodes={outcomeNodes}
-                onUpdatePath={onUpdatePath}
-                onDeletePath={onDeletePath}
-                onSetPathTarget={onSetPathTarget}
-              />
-            ))}
-            {showAddPath ? (
-              <AddPathForm
-                step={step}
-                stepIndex={stepIndex}
-                allSteps={allSteps}
-                outcomeNodes={outcomeNodes}
-                onAdd={handleAddPath}
-                onCancel={() => setShowAddPath(false)}
-              />
-            ) : (
-              <AddButton label="Add decision point" onClick={() => setShowAddPath(true)} />
-            )}
 
             {/* Evaluation */}
             <SectionHeader label="Evaluation" />
