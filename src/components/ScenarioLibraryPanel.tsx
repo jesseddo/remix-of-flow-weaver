@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Persona, ScenarioResource, ScenarioData } from "@/types/scenario";
 import { PersonaEditor } from "./PersonaEditor";
 import { ResourceEditor } from "./ResourceEditor";
-import { X, Users, FileStack, Info } from "lucide-react";
+import { X, Users, FileStack } from "lucide-react";
 
-type LibraryTab = "metadata" | "personas" | "resources";
+type LibraryTab = "personas" | "resources";
 
 interface ScenarioLibraryPanelProps {
   isOpen: boolean;
@@ -19,96 +19,9 @@ interface ScenarioLibraryPanelProps {
 }
 
 const TAB_CONFIG: { id: LibraryTab; label: string; icon: typeof Users }[] = [
-  { id: "metadata", label: "Metadata", icon: Info },
   { id: "personas", label: "Characters", icon: Users },
   { id: "resources", label: "Resources", icon: FileStack },
 ];
-
-const SectionHeader = ({ label }: { label: string }) => (
-  <div className="flex items-center gap-2 px-4 pt-4 pb-2">
-    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60">
-      {label}
-    </span>
-    <div className="flex-1 h-px bg-border/50" />
-  </div>
-);
-
-const MetadataRow = ({ label, value }: { label: string; value?: string }) => {
-  if (!value) return null;
-  return (
-    <div className="px-4 pb-2">
-      <p className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-0.5">
-        {label}
-      </p>
-      <p className="text-[11px] text-foreground leading-relaxed">{value}</p>
-    </div>
-  );
-};
-
-const MetadataTab = ({ data }: { data: ScenarioData }) => {
-  const node = data.scenarioNode;
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <SectionHeader label="Scenario" />
-      <MetadataRow label="Title" value={data.title} />
-      <MetadataRow label="Description" value={node.description} />
-
-      {data.globalTimers.length > 0 && (
-        <>
-          <SectionHeader label="Global Timers" />
-          {data.globalTimers.map((t) => (
-            <div key={t.id} className="mx-3 mb-2 px-3 py-2 rounded-lg" style={{ border: "1px solid hsl(var(--border))", background: "hsl(var(--secondary) / 0.35)" }}>
-              <p className="text-[11px] font-semibold text-foreground">{t.name}</p>
-              <p className="text-[9px] text-muted-foreground mt-0.5">
-                Triggers after {Math.round(t.timeoutMs / 1000)}s → <span className="font-mono">{t.targetStepId}</span>
-              </p>
-            </div>
-          ))}
-        </>
-      )}
-
-      {data.outcomeNodes.length > 0 && (
-        <>
-          <SectionHeader label="Outcomes" />
-          {data.outcomeNodes.map((o) => {
-            const outcomeColorMap = {
-              safe_path: { color: "hsl(145, 65%, 28%)", bg: "hsl(145, 65%, 95%)", border: "hsl(145, 65%, 78%)" },
-              partial_failure: { color: "hsl(40, 75%, 30%)", bg: "hsl(40, 80%, 95%)", border: "hsl(40, 80%, 78%)" },
-              critical_failure: { color: "hsl(0, 65%, 42%)", bg: "hsl(0, 65%, 96%)", border: "hsl(0, 65%, 80%)" },
-            };
-            const s = outcomeColorMap[o.outcome];
-            return (
-              <div
-                key={o.id}
-                className="mx-3 mb-2 px-3 py-2 rounded-lg"
-                style={{ border: `1px solid ${s.border}`, background: s.bg }}
-              >
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <p className="text-[11px] font-semibold" style={{ color: s.color }}>
-                    {o.title}
-                  </p>
-                  <span
-                    className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
-                    style={{ background: s.border + "55", color: s.color }}
-                  >
-                    {o.outcome.replace("_", " ")}
-                  </span>
-                </div>
-                {o.description && (
-                  <p className="text-[10px] leading-relaxed" style={{ color: s.color + "cc" }}>
-                    {o.description}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </>
-      )}
-
-      <div className="h-8" />
-    </div>
-  );
-};
 
 export const ScenarioLibraryPanel = ({
   isOpen,
@@ -191,8 +104,6 @@ export const ScenarioLibraryPanel = ({
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
-          {activeTab === "metadata" && <MetadataTab data={data} />}
-
           {activeTab === "personas" && (
             <div className="pt-3">
               <div className="px-4 pb-2">

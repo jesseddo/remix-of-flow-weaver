@@ -1,304 +1,280 @@
-[
-  {
-    "id": "p101-v2",
-    "title": "P-101 Isobutane Pump Recommissioning",
-    "description": "Version 2 with 5-scene structure covering background setup, team greeting, document review, operation decision, and stop work outcomes.",
-    "status": "available",
-    "version": "V2",
-    "difficulty": "advanced",
-    "duration": "45-60 min",
-    "subject": "P-101 Isobutane Pump",
-    "unit": "Isobutane Processing Unit",
-    "media": [
-      {
-        "type": "video-intro",
-        "url": "/videos/p101-isobutane-phase/intro.mp4"
-      },
-      {
-        "type": "video-simulation",
-        "url": "/videos/p101-isobutane-phase/intro.mp4"
-      },
-      {
-        "type": "video-outcome-success",
-        "url": "/videos/p101-isobutane-phase/preferred-outcome-bleeder-valve.mp4"
-      },
-      {
-        "type": "video-outcome-failure",
-        "url": "/videos/p101-isobutane-phase/negative-outcome-blind-pull.mp4"
-      }
-    ],
-    "team": [
-      {
-        "name": "Brent",
-        "role": "Safety Supervisor",
-        "description": "Provides safety introduction and guidance"
-      },
-      {
-        "name": "Mike Rodriguez",
-        "role": "Operator / Point of Control",
-        "description": "Operator at point of control, responsible for isolation and documentation"
-      },
-      {
-        "name": "Rachel Kim",
-        "role": "Maintenance Technician",
-        "description": "Part of the maintenance crew"
-      },
-      {
-        "name": "Ted",
-        "role": "Maintenance Technician",
-        "description": "Part of the crew, performs physical work"
-      },
-      {
-        "name": "Coach",
-        "role": "Coach (Facilitator)",
-        "description": "Guides scenario. Provides prompts and responds to your decisions throughout the scenario to help guide your learning experience."
-      }
-    ],
-    "sceneResources": [
-      {
-        "title": "Permit to Work (PTW)",
-        "type": "Document",
-        "description": "Active work permit for P-101 pump recommissioning",
-        "url": "https://www.google.com"
-      },
-      {
-        "title": "Start Work Check (SWC) Form",
-        "type": "Document",
-        "description": "Mandatory checklist for verifying safety requirements before starting work",
-        "url": "https://oe-ffl-chat.vercel.app/SWC.pdf"
-      },
-      {
-        "title": "Isolation List - P-101",
-        "type": "Document",
-        "description": "Complete list of all isolation points, locks, and tags for P-101 pump",
-        "url": "https://oe-ffl-chat.vercel.app/LOTO.pdf"
-      }
-    ],
-    "outcomes": [
-      {
-        "title": "Success",
-        "outcomeType": "safe_path",
-        "description": "Great job on safeguard verification! By proactively requesting the correct isolation list and thoroughly verifying zero energy before starting the task, you ensured that all potential energy sources were safely controlled. This step is critical in preventing accidental releases and protecting both personnel and equipment.",
-        "url": "https://www.google.com"
-      },
-      {
-        "title": "Coach Feedback",
-        "outcomeType": "critical_failure",
-        "description": "During the recommissioning of the isobutane pump (P-101), it was observed that you proceeded without verifying all safeguards were in place by not requesting the required isolation list and verifying zero energy before starting the task. This oversight created an explosive environment with the release of isobutane and the formation of a gas plume.",
-        "url": "https://www.google.com"
-      }
-    ],
-    "scenes": [
-      {
-        "id": "scene-background-setup",
-        "title": "Background Setup",
-        "description": "Introduction to the scenario and initial context setting",
-        "triggers": [
-          {
-            "id": "trigger-ready-to-meet-team",
-            "type": "chat",
-            "description": "Learner indicates readiness to proceed",
-            "criteria": "Learner acknowledges the background information and is ready to meet the team",
-            "target_id": "scene-team-greeting"
-          }
-        ]
-      },
-      {
-        "id": "scene-team-greeting",
-        "title": "Team Greeting",
-        "description": "Meet the team and receive initial briefing about the P-101 pump recommissioning task",
-        "triggers": [
-          {
-            "id": "trigger-verify-isolation",
-            "type": "chat",
-            "description": "Learner requests isolation list verification",
-            "criteria": "Learner asks to verify isolation points, requests the isolation list, or asks about zero energy verification before proceeding",
-            "target_id": "scene-document-review"
-          },
-          {
-            "id": "trigger-proceed-without-check",
-            "type": "chat",
-            "description": "Learner proceeds without verification",
-            "criteria": "Learner attempts to start work, pull blinds, or proceed with physical tasks without first requesting isolation verification",
-            "target_id": "scene-negative-outcome"
-          }
-        ]
-      },
-      {
-        "id": "scene-document-review",
-        "title": "Document Review",
-        "description": "Review isolation list and safety documents to verify zero energy state",
-        "triggers": [
-          {
-            "id": "trigger-verify-complete",
-            "type": "chat",
-            "description": "Learner completes verification",
-            "criteria": "Learner confirms all isolation points are verified and zero energy state is confirmed",
-            "target_id": "scene-operation-decision"
-          }
-        ]
-      },
-      {
-        "id": "scene-operation-decision",
-        "title": "Operation Decision",
-        "description": "Make the decision on how to proceed with the recommissioning operation",
-        "triggers": [
-          {
-            "id": "trigger-safe-operation",
-            "type": "chat",
-            "description": "Learner chooses safe operation method",
-            "criteria": "Learner decides to use the bleeder valve method or another approved safe procedure",
-            "target_id": "scene-positive-outcome"
-          },
-          {
-            "id": "trigger-unsafe-operation",
-            "type": "chat",
-            "description": "Learner chooses unsafe operation method",
-            "criteria": "Learner decides to pull blinds without proper precautions or uses an unsafe procedure",
-            "target_id": "scene-negative-outcome"
-          }
-        ]
-      },
-      {
-        "id": "scene-positive-outcome",
-        "title": "Success Outcome",
-        "description": "Positive outcome - learner made safe decisions throughout the scenario",
-        "triggers": []
-      },
-      {
-        "id": "scene-negative-outcome",
-        "title": "Negative Outcome",
-        "description": "Negative outcome - learner skipped critical safety steps",
-        "triggers": []
-      }
-    ]
-  },
-  {
-    "id": "p101-v1",
-    "title": "P-101 Isobutane Pump Recommissioning",
-    "description": "Legacy flow with early dialogue prototype. Useful for regression testing and component comparisons.",
-    "status": "prototype",
-    "version": "V1",
-    "difficulty": "intermediate",
-    "duration": "30-40 min",
-    "subject": "P-101 Isobutane Pump",
-    "unit": "Isobutane Processing Unit"
-  },
-  {
-    "id": "scenario-8-compressor-tubing-leak-v1",
-    "title": "Compressor Tubing Leak",
-    "description": "Respond to trace levels of hydrocarbons and H₂S detected on the compressor deck. Focus on proper procedure adherence and consulting the Leak Response Plan before making operational decisions.",
-    "status": "available",
-    "version": "V1",
-    "difficulty": "intermediate",
-    "duration": "30-45 min",
-    "subject": "Compressor Deck - Recycle Gas Analyzer System",
-    "unit": "Downstream CPF",
-    "media": [
-      {
-        "type": "video-intro",
-        "url": "/videos/scenario-8-compressor-leak/intro.mp4"
-      },
-      {
-        "type": "video-simulation",
-        "url": "/videos/scenario-8-compressor-leak/simulation.mp4"
-      },
-      {
-        "type": "video-outcome-success",
-        "url": "/videos/scenario-8-compressor-leak/outcome-success.mp4"
-      },
-      {
-        "type": "video-outcome-failure",
-        "url": "/videos/scenario-8-compressor-leak/outcome-failure.mp4"
-      }
-    ],
-    "team": [
-      {
-        "name": "Head Operator",
-        "role": "Supervisor",
-        "description": "Reviews the Leak Response Plan (LRP) and provides guidance on proper response procedures."
-      },
-      {
-        "name": "Coach",
-        "role": "Coach (Facilitator)",
-        "description": "Guides scenario. Provides prompts and responds to your decisions throughout the scenario to help guide your learning experience."
-      }
-    ],
-    "sceneResources": [
-      {
-        "title": "Leak Response Plan (LRP)",
-        "type": "Document",
-        "description": "Leak Response Plan for the compressor deck area - must be consulted before taking major operational actions",
-        "url": "/documents/scenario-8-compressor-leak/lrp.pdf"
-      }
-    ],
-    "outcomes": [
-      {
-        "title": "Proper Procedure Adherence",
-        "outcomeType": "safe_path",
-        "description": "Excellent decision-making! By consulting the Leak Response Plan before taking action, you ensured the proper response protocol was followed. The LRP indicated that compressor shutdown was not necessary for trace-level detections, allowing for safe mitigation while maintaining operations and avoiding an environmental incident."
-      },
-      {
-        "title": "Environmental Non-Compliance",
-        "outcomeType": "partial_failure",
-        "description": "The decision to shut down the compressor without consulting the Leak Response Plan resulted in an environmental non-compliance event. The process flared unnecessarily, and proper mitigation procedures were not followed. This highlights the critical importance of consulting procedures before making major operational decisions."
-      }
-    ],
-    "scenes": [
-      {
-        "id": "scene-leak-detection",
-        "title": "Leak Detection",
-        "description": "Trace levels of hydrocarbons and H2S have been detected on the compressor deck",
-        "triggers": [
-          {
-            "id": "trigger-consult-lrp",
-            "type": "chat",
-            "description": "Learner consults the Leak Response Plan",
-            "criteria": "Learner requests or reviews the Leak Response Plan before making operational decisions",
-            "target_id": "scene-lrp-review"
-          },
-          {
-            "id": "trigger-immediate-shutdown",
-            "type": "chat",
-            "description": "Learner initiates immediate shutdown",
-            "criteria": "Learner decides to shut down the compressor without consulting the LRP first",
-            "target_id": "scene-environmental-incident"
-          }
-        ]
-      },
-      {
-        "id": "scene-lrp-review",
-        "title": "LRP Review",
-        "description": "Review the Leak Response Plan with the Head Operator",
-        "triggers": [
-          {
-            "id": "trigger-follow-lrp",
-            "type": "chat",
-            "description": "Learner follows LRP guidance",
-            "criteria": "Learner decides to follow the LRP procedures for trace-level detection (no shutdown required)",
-            "target_id": "scene-proper-mitigation"
-          },
-          {
-            "id": "trigger-override-lrp",
-            "type": "chat",
-            "description": "Learner overrides LRP recommendation",
-            "criteria": "Learner decides to shut down despite LRP indicating it's not necessary",
-            "target_id": "scene-environmental-incident"
-          }
-        ]
-      },
-      {
-        "id": "scene-proper-mitigation",
-        "title": "Proper Mitigation",
-        "description": "Successfully mitigate the leak following proper procedures",
-        "triggers": []
-      },
-      {
-        "id": "scene-environmental-incident",
-        "title": "Environmental Incident",
-        "description": "Unnecessary shutdown resulted in flaring and environmental non-compliance",
-        "triggers": []
-      }
-    ]
-  }
-]
+{
+  "id": "module-1",
+  "title": "Module 1",
+  "description": "Isobutane pump recommissioning and compressor leak response training scenarios.",
+  "team": [
+    {
+      "name": "Brent",
+      "role": "Safety Supervisor",
+      "description": "Provides safety introduction and guidance"
+    },
+    {
+      "name": "Mike Rodriguez",
+      "role": "Operator / Point of Control",
+      "description": "Operator at point of control, responsible for isolation and documentation"
+    },
+    {
+      "name": "Rachel Kim",
+      "role": "Maintenance Technician",
+      "description": "Part of the maintenance crew"
+    },
+    {
+      "name": "Ted",
+      "role": "Maintenance Technician",
+      "description": "Part of the crew, performs physical work"
+    },
+    {
+      "name": "Coach",
+      "role": "Coach (Facilitator)",
+      "description": "Guides scenario. Provides prompts and responds to your decisions throughout the scenario to help guide your learning experience."
+    },
+    {
+      "name": "Head Operator",
+      "role": "Supervisor",
+      "description": "Reviews the Leak Response Plan (LRP) and provides guidance on proper response procedures."
+    }
+  ],
+  "sceneResources": [
+    {
+      "id": "PTW",
+      "title": "Permit to Work (PTW)",
+      "type": "Document",
+      "description": "Active work permit for P-101 pump recommissioning",
+      "url": "https://www.google.com"
+    },
+    {
+      "id": "SWC",
+      "title": "Start Work Check (SWC) Form",
+      "type": "Document",
+      "description": "Mandatory checklist for verifying safety requirements before starting work",
+      "url": "https://oe-ffl-chat.vercel.app/SWC.pdf"
+    },
+    {
+      "id": "ISOLATION_LIST",
+      "title": "Isolation List - P-101",
+      "type": "Document",
+      "description": "Complete list of all isolation points, locks, and tags for P-101 pump",
+      "url": "https://oe-ffl-chat.vercel.app/LOTO.pdf"
+    },
+    {
+      "id": "LRP",
+      "title": "Leak Response Plan (LRP)",
+      "type": "Document",
+      "description": "Leak Response Plan for the compressor deck area - must be consulted before taking major operational actions",
+      "url": "/documents/scenario-8-compressor-leak/lrp.pdf"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "p101-v2",
+      "title": "P-101 Isobutane Pump Recommissioning",
+      "description": "Version 2 with 5-scene structure covering background setup, team greeting, document review, operation decision, and stop work outcomes.",
+      "status": "available",
+      "version": "V2",
+      "difficulty": "advanced",
+      "duration": "45-60 min",
+      "subject": "P-101 Isobutane Pump",
+      "unit": "Isobutane Processing Unit",
+      "media": [
+        { "type": "video-intro", "url": "/videos/p101-isobutane-phase/intro.mp4" },
+        { "type": "video-simulation", "url": "/videos/p101-isobutane-phase/intro.mp4" },
+        { "type": "video-outcome-success", "url": "/videos/p101-isobutane-phase/preferred-outcome-bleeder-valve.mp4" },
+        { "type": "video-outcome-failure", "url": "/videos/p101-isobutane-phase/negative-outcome-blind-pull.mp4" }
+      ],
+      "outcomes": [
+        {
+          "title": "Success",
+          "outcomeType": "safe_path",
+          "description": "Great job on safeguard verification! By proactively requesting the correct isolation list and thoroughly verifying zero energy before starting the task, you ensured that all potential energy sources were safely controlled. This step is critical in preventing accidental releases and protecting both personnel and equipment.",
+          "url": "https://www.google.com"
+        },
+        {
+          "title": "Coach Feedback",
+          "outcomeType": "critical_failure",
+          "description": "During the recommissioning of the isobutane pump (P-101), it was observed that you proceeded without verifying all safeguards were in place by not requesting the required isolation list and verifying zero energy before starting the task. This oversight created an explosive environment with the release of isobutane and the formation of a gas plume.",
+          "url": "https://www.google.com"
+        }
+      ],
+      "scenes": [
+        {
+          "id": "scene-background-setup",
+          "title": "Background Setup",
+          "description": "Introduction to the scenario and initial context setting",
+          "triggers": [
+            {
+              "id": "trigger-ready-to-meet-team",
+              "type": "chat",
+              "description": "Learner indicates readiness to proceed",
+              "criteria": "Learner acknowledges the background information and is ready to meet the team",
+              "target_id": "scene-team-greeting"
+            }
+          ]
+        },
+        {
+          "id": "scene-team-greeting",
+          "title": "Team Greeting",
+          "description": "Meet the team and receive initial briefing about the P-101 pump recommissioning task",
+          "triggers": [
+            {
+              "id": "trigger-verify-isolation",
+              "type": "chat",
+              "description": "Learner requests isolation list verification",
+              "criteria": "Learner asks to verify isolation points, requests the isolation list, or asks about zero energy verification before proceeding",
+              "target_id": "scene-document-review"
+            },
+            {
+              "id": "trigger-proceed-without-check",
+              "type": "chat",
+              "description": "Learner proceeds without verification",
+              "criteria": "Learner attempts to start work, pull blinds, or proceed with physical tasks without first requesting isolation verification",
+              "target_id": "scene-negative-outcome"
+            }
+          ]
+        },
+        {
+          "id": "scene-document-review",
+          "title": "Document Review",
+          "description": "Review isolation list and safety documents to verify zero energy state",
+          "triggers": [
+            {
+              "id": "trigger-verify-complete",
+              "type": "chat",
+              "description": "Learner completes verification",
+              "criteria": "Learner confirms all isolation points are verified and zero energy state is confirmed",
+              "target_id": "scene-operation-decision"
+            }
+          ]
+        },
+        {
+          "id": "scene-operation-decision",
+          "title": "Operation Decision",
+          "description": "Make the decision on how to proceed with the recommissioning operation",
+          "triggers": [
+            {
+              "id": "trigger-safe-operation",
+              "type": "chat",
+              "description": "Learner chooses safe operation method",
+              "criteria": "Learner decides to use the bleeder valve method or another approved safe procedure",
+              "target_id": "scene-positive-outcome"
+            },
+            {
+              "id": "trigger-unsafe-operation",
+              "type": "chat",
+              "description": "Learner chooses unsafe operation method",
+              "criteria": "Learner decides to pull blinds without proper precautions or uses an unsafe procedure",
+              "target_id": "scene-negative-outcome"
+            }
+          ]
+        },
+        {
+          "id": "scene-positive-outcome",
+          "title": "Success Outcome",
+          "description": "Positive outcome - learner made safe decisions throughout the scenario",
+          "triggers": []
+        },
+        {
+          "id": "scene-negative-outcome",
+          "title": "Negative Outcome",
+          "description": "Negative outcome - learner skipped critical safety steps",
+          "triggers": []
+        }
+      ]
+    },
+    {
+      "id": "p101-v1",
+      "title": "P-101 Isobutane Pump Recommissioning",
+      "description": "Legacy flow with early dialogue prototype. Useful for regression testing and component comparisons.",
+      "status": "prototype",
+      "version": "V1",
+      "difficulty": "intermediate",
+      "duration": "30-40 min",
+      "subject": "P-101 Isobutane Pump",
+      "unit": "Isobutane Processing Unit"
+    },
+    {
+      "id": "scenario-8-compressor-tubing-leak-v1",
+      "title": "Compressor Tubing Leak",
+      "description": "Respond to trace levels of hydrocarbons and H₂S detected on the compressor deck. Focus on proper procedure adherence and consulting the Leak Response Plan before making operational decisions.",
+      "status": "available",
+      "version": "V1",
+      "difficulty": "intermediate",
+      "duration": "30-45 min",
+      "subject": "Compressor Deck - Recycle Gas Analyzer System",
+      "unit": "Downstream CPF",
+      "media": [
+        { "type": "video-intro", "url": "/videos/scenario-8-compressor-leak/intro.mp4" },
+        { "type": "video-simulation", "url": "/videos/scenario-8-compressor-leak/simulation.mp4" },
+        { "type": "video-outcome-success", "url": "/videos/scenario-8-compressor-leak/outcome-success.mp4" },
+        { "type": "video-outcome-failure", "url": "/videos/scenario-8-compressor-leak/outcome-failure.mp4" }
+      ],
+      "outcomes": [
+        {
+          "title": "Proper Procedure Adherence",
+          "outcomeType": "safe_path",
+          "description": "Excellent decision-making! By consulting the Leak Response Plan before taking action, you ensured the proper response protocol was followed. The LRP indicated that compressor shutdown was not necessary for trace-level detections, allowing for safe mitigation while maintaining operations and avoiding an environmental incident."
+        },
+        {
+          "title": "Environmental Non-Compliance",
+          "outcomeType": "partial_failure",
+          "description": "The decision to shut down the compressor without consulting the Leak Response Plan resulted in an environmental non-compliance event. The process flared unnecessarily, and proper mitigation procedures were not followed. This highlights the critical importance of consulting procedures before making major operational decisions."
+        }
+      ],
+      "scenes": [
+        {
+          "id": "scene-leak-detection",
+          "title": "Leak Detection",
+          "description": "Trace levels of hydrocarbons and H2S have been detected on the compressor deck",
+          "triggers": [
+            {
+              "id": "trigger-consult-lrp",
+              "type": "chat",
+              "description": "Learner consults the Leak Response Plan",
+              "criteria": "Learner requests or reviews the Leak Response Plan before making operational decisions",
+              "target_id": "scene-lrp-review"
+            },
+            {
+              "id": "trigger-immediate-shutdown",
+              "type": "chat",
+              "description": "Learner initiates immediate shutdown",
+              "criteria": "Learner decides to shut down the compressor without consulting the LRP first",
+              "target_id": "scene-environmental-incident"
+            }
+          ]
+        },
+        {
+          "id": "scene-lrp-review",
+          "title": "LRP Review",
+          "description": "Review the Leak Response Plan with the Head Operator",
+          "triggers": [
+            {
+              "id": "trigger-follow-lrp",
+              "type": "chat",
+              "description": "Learner follows LRP guidance",
+              "criteria": "Learner decides to follow the LRP procedures for trace-level detection (no shutdown required)",
+              "target_id": "scene-proper-mitigation"
+            },
+            {
+              "id": "trigger-override-lrp",
+              "type": "chat",
+              "description": "Learner overrides LRP recommendation",
+              "criteria": "Learner decides to shut down despite LRP indicating it's not necessary",
+              "target_id": "scene-environmental-incident"
+            }
+          ]
+        },
+        {
+          "id": "scene-proper-mitigation",
+          "title": "Proper Mitigation",
+          "description": "Successfully mitigate the leak following proper procedures",
+          "triggers": []
+        },
+        {
+          "id": "scene-environmental-incident",
+          "title": "Environmental Incident",
+          "description": "Unnecessary shutdown resulted in flaring and environmental non-compliance",
+          "triggers": []
+        }
+      ]
+    }
+  ]
+}

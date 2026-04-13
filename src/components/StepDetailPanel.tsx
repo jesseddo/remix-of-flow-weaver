@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import {
   MessageSquare, Radio, FileText, Video, X,
   ChevronRight, AlertTriangle, CheckCircle2, XCircle,
-  Plus, Trash2, Pencil,
+  Plus, Trash2, Pencil, UserPlus,
 } from "lucide-react";
 import type { OutcomeType } from "@/types/scenario";
 
@@ -49,6 +49,7 @@ interface StepDetailPanelProps {
   onSetPathTarget: (stepId: string, pathId: string, target: PathTarget) => void;
   onUpdateEvaluation: (stepId: string, patch: UpdateEvaluationPatch) => void;
   onClearEvaluation: (stepId: string) => void;
+  onAddPersonaToCatalog?: (persona: Persona) => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -852,9 +853,15 @@ export const StepDetailPanel = ({
   onSetPathTarget,
   onUpdateEvaluation,
   onClearEvaluation,
+  onAddPersonaToCatalog,
 }: StepDetailPanelProps) => {
   const [showAddPath, setShowAddPath] = useState(false);
   const [justAddedTaskId, setJustAddedTaskId] = useState<string | null>(null);
+  const [addingCharacter, setAddingCharacter] = useState(false);
+  const [newCharName, setNewCharName] = useState("");
+  const [newCharRole, setNewCharRole] = useState("");
+  const [newCharDescription, setNewCharDescription] = useState("");
+  const [newCharCommStyle, setNewCharCommStyle] = useState("");
 
   const isOpen = step !== null;
   const cfg = step ? typeConfig[step.type] ?? typeConfig.chat : null;
@@ -1018,162 +1025,332 @@ export const StepDetailPanel = ({
               </div>
             </div>
 
-            {/* Persona */}
-            <SectionHeader label="Persona" />
-            <div className="px-4 pb-3">
-              {/* Character select */}
-              <div className="space-y-1 mb-3">
-                <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  Character
-                </label>
-                {personas.length > 0 ? (
-                  <select
-                    value={step.persona ?? ""}
-                    onChange={(e) => onUpdatePersona(step.id, { persona: e.target.value || undefined })}
-                    className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
-                  >
-                    <option value="">— No character assigned —</option>
-                    {personas.map((p) => (
-                      <option key={p.id} value={p.name}>
-                        {p.name} · {p.role}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={step.persona ?? ""}
-                    onChange={(e) => onUpdatePersona(step.id, { persona: e.target.value })}
-                    className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
-                    placeholder="Character name… (add characters in Library)"
-                  />
-                )}
-                {/* Show matched character detail as a subtle hint */}
-                {step.persona && personas.length > 0 && (() => {
-                  const matched = personas.find((p) => p.name === step.persona);
-                  if (!matched) return null;
-                  return (
-                    <p className="text-[9px] text-muted-foreground/60 leading-relaxed mt-1 italic line-clamp-1">
-                      {matched.communicationStyle || matched.description || matched.role}
-                    </p>
-                  );
-                })()}
-              </div>
-
-              {/* Adherence */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                    Persona Adherence
-                  </label>
-                  <span
-                    className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                    style={
-                      step.personaAdherence
-                        ? {
-                            background: `hsl(${220 - (step.personaAdherence - 1) * 22}, 70%, 52%, 0.12)`,
-                            color: `hsl(${220 - (step.personaAdherence - 1) * 22}, 70%, 42%)`,
-                            border: `1px solid hsl(${220 - (step.personaAdherence - 1) * 22}, 70%, 52%, 0.25)`,
-                          }
-                        : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }
-                    }
-                  >
-                    {step.personaAdherence ? `${step.personaAdherence} / 5` : "—"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <button
-                      key={n}
-                      onClick={() =>
-                        onUpdatePersona(step.id, {
-                          personaAdherence: n === step.personaAdherence ? undefined : n,
-                        })
-                      }
-                      title={
-                        n === 1 ? "1 – Minimal adherence"
-                        : n === 2 ? "2 – Loose adherence"
-                        : n === 3 ? "3 – Moderate adherence"
-                        : n === 4 ? "4 – Strong adherence"
-                        : "5 – Strict adherence"
-                      }
-                      className="flex-1 py-1.5 rounded text-[10px] font-bold transition-all"
-                      style={
-                        (step.personaAdherence ?? 0) >= n
-                          ? {
-                              background: `hsl(${220 - (n - 1) * 22}, 70%, 52%)`,
-                              color: "white",
-                              border: "1px solid transparent",
-                            }
-                          : {
-                              background: "hsl(var(--muted))",
-                              color: "hsl(var(--muted-foreground) / 0.4)",
-                              border: "1px solid hsl(var(--border) / 0.5)",
-                            }
-                      }
+            {/* Persona — only for chat & radio modalities */}
+            {(step.type === "chat" || step.type === "radio") && (
+              <>
+                <SectionHeader label="Persona" />
+                <div className="px-4 pb-3">
+                  {/* Character select */}
+                  <div className="space-y-1 mb-3">
+                    <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                      Character
+                    </label>
+                    <select
+                      value={step.persona ?? ""}
+                      onChange={(e) => {
+                        if (e.target.value === "__add_new__") {
+                          setAddingCharacter(true);
+                          return;
+                        }
+                        onUpdatePersona(step.id, { persona: e.target.value || undefined });
+                      }}
+                      className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
                     >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[9px] text-muted-foreground/50 italic">
-                  {step.personaAdherence === 1 && "Minimal — character deviates significantly from their defined persona"}
-                  {step.personaAdherence === 2 && "Loose — character follows their persona loosely"}
-                  {step.personaAdherence === 3 && "Moderate — character mostly follows their defined persona"}
-                  {step.personaAdherence === 4 && "Strong — character closely adheres to their defined persona"}
-                  {step.personaAdherence === 5 && "Strict — character follows their defined persona exactly"}
-                  {!step.personaAdherence && "Not set — click a level to configure behavioral adherence"}
-                </p>
-              </div>
-            </div>
-
-            {/* Resource */}
-            <SectionHeader label="Resource" />
-            <div className="px-4 pb-3">
-              <div className="space-y-1">
-                <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  Assigned Resource
-                </label>
-                {resources.length > 0 ? (
-                  <select
-                    value={step.resource ?? ""}
-                    onChange={(e) => onUpdateStep(step.id, { resource: e.target.value || undefined })}
-                    className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
-                  >
-                    <option value="">— No resource —</option>
-                    {resources.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.title} ({r.type})
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="text-[10px] text-muted-foreground/50 italic py-1">
-                    No resources defined. Add them in the Scenario Library.
-                  </p>
-                )}
-                {step.resource && resources.length > 0 && (() => {
-                  const matched = resources.find((r) => r.id === step.resource);
-                  if (!matched) return null;
-                  return (
-                    <p className="text-[9px] text-muted-foreground/60 leading-relaxed mt-1 line-clamp-2">
-                      {matched.description}
-                      {matched.url && (
-                        <a
-                          href={matched.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ml-1 text-primary hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          ↗ Open
-                        </a>
+                      <option value="">— No character assigned —</option>
+                      {personas.map((p) => (
+                        <option key={p.id} value={p.name}>
+                          {p.name} · {p.role}
+                        </option>
+                      ))}
+                      {onAddPersonaToCatalog && (
+                        <option value="__add_new__">+ Add character…</option>
                       )}
+                    </select>
+                    {step.persona && personas.length > 0 && (() => {
+                      const matched = personas.find((p) => p.name === step.persona);
+                      if (!matched) return null;
+                      return (
+                        <p className="text-[9px] text-muted-foreground/60 leading-relaxed mt-1 italic line-clamp-1">
+                          {matched.communicationStyle || matched.description || matched.role}
+                        </p>
+                      );
+                    })()}
+
+                    {/* Inline add-character form (matches library fields) */}
+                    {addingCharacter && onAddPersonaToCatalog && (
+                      <div
+                        className="mt-2 rounded-lg overflow-hidden"
+                        style={{ border: "1px dashed hsl(var(--border))", background: "hsl(var(--secondary) / 0.2)" }}
+                      >
+                        <div className="px-3 py-2.5 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1">
+                              <UserPlus className="w-3 h-3" />
+                              New Character
+                            </span>
+                            <button
+                              onClick={() => { setAddingCharacter(false); setNewCharName(""); setNewCharRole(""); setNewCharDescription(""); setNewCharCommStyle(""); }}
+                              className="w-4 h-4 flex items-center justify-center rounded hover:bg-secondary"
+                            >
+                              <X className="w-3 h-3 text-muted-foreground" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground/50 block mb-0.5">Name *</span>
+                              <input
+                                type="text"
+                                value={newCharName}
+                                onChange={(e) => setNewCharName(e.target.value)}
+                                placeholder="Character name…"
+                                autoFocus
+                                className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground/50 block mb-0.5">Role *</span>
+                              <input
+                                type="text"
+                                value={newCharRole}
+                                onChange={(e) => setNewCharRole(e.target.value)}
+                                placeholder="e.g. Control Room Operator"
+                                className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground/50 block mb-0.5">Personality / Background</span>
+                            <textarea
+                              value={newCharDescription}
+                              onChange={(e) => setNewCharDescription(e.target.value)}
+                              placeholder="Who is this character? What motivates them?"
+                              rows={2}
+                              className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all resize-none"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground/50 block mb-0.5">Communication Style</span>
+                            <input
+                              type="text"
+                              value={newCharCommStyle}
+                              onChange={(e) => setNewCharCommStyle(e.target.value)}
+                              placeholder="e.g. Direct, concise, slightly defensive under pressure…"
+                              className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+                            />
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (!newCharName.trim() || !newCharRole.trim()) return;
+                              const id = newCharName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || `persona-${Date.now()}`;
+                              const uniqueId = personas.some((p) => p.id === id) ? `${id}-${Date.now()}` : id;
+                              onAddPersonaToCatalog({
+                                id: uniqueId,
+                                name: newCharName.trim(),
+                                role: newCharRole.trim(),
+                                description: newCharDescription.trim() || undefined,
+                                communicationStyle: newCharCommStyle.trim() || undefined,
+                              });
+                              onUpdatePersona(step.id, { persona: newCharName.trim() });
+                              setAddingCharacter(false);
+                              setNewCharName("");
+                              setNewCharRole("");
+                              setNewCharDescription("");
+                              setNewCharCommStyle("");
+                            }}
+                            disabled={!newCharName.trim() || !newCharRole.trim()}
+                            className="w-full py-1.5 rounded-md text-[11px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
+                          >
+                            Add & Assign
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Adherence */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                        Persona Adherence
+                      </label>
+                      <span
+                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={
+                          step.personaAdherence
+                            ? {
+                                background: `hsl(${220 - (step.personaAdherence - 1) * 22}, 70%, 52%, 0.12)`,
+                                color: `hsl(${220 - (step.personaAdherence - 1) * 22}, 70%, 42%)`,
+                                border: `1px solid hsl(${220 - (step.personaAdherence - 1) * 22}, 70%, 52%, 0.25)`,
+                              }
+                            : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }
+                        }
+                      >
+                        {step.personaAdherence ? `${step.personaAdherence} / 5` : "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <button
+                          key={n}
+                          onClick={() =>
+                            onUpdatePersona(step.id, {
+                              personaAdherence: n === step.personaAdherence ? undefined : n,
+                            })
+                          }
+                          title={
+                            n === 1 ? "1 – Minimal adherence"
+                            : n === 2 ? "2 – Loose adherence"
+                            : n === 3 ? "3 – Moderate adherence"
+                            : n === 4 ? "4 – Strong adherence"
+                            : "5 – Strict adherence"
+                          }
+                          className="flex-1 py-1.5 rounded text-[10px] font-bold transition-all"
+                          style={
+                            (step.personaAdherence ?? 0) >= n
+                              ? {
+                                  background: `hsl(${220 - (n - 1) * 22}, 70%, 52%)`,
+                                  color: "white",
+                                  border: "1px solid transparent",
+                                }
+                              : {
+                                  background: "hsl(var(--muted))",
+                                  color: "hsl(var(--muted-foreground) / 0.4)",
+                                  border: "1px solid hsl(var(--border) / 0.5)",
+                                }
+                          }
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-muted-foreground/50 italic">
+                      {step.personaAdherence === 1 && "Minimal — character deviates significantly from their defined persona"}
+                      {step.personaAdherence === 2 && "Loose — character follows their persona loosely"}
+                      {step.personaAdherence === 3 && "Moderate — character mostly follows their defined persona"}
+                      {step.personaAdherence === 4 && "Strong — character closely adheres to their defined persona"}
+                      {step.personaAdherence === 5 && "Strict — character follows their defined persona exactly"}
+                      {!step.personaAdherence && "Not set — click a level to configure behavioral adherence"}
                     </p>
-                  );
-                })()}
-              </div>
-            </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Document — only for document modality */}
+            {step.type === "document" && (
+              <>
+                <SectionHeader label="Document" />
+                <div className="px-4 pb-3">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                      Assigned Document
+                    </label>
+                    {(() => {
+                      const docResources = resources.filter(
+                        (r) => r.type.toLowerCase() === "document" || r.type.toLowerCase() === "pdf" || r.type.toLowerCase() === "file"
+                      );
+                      const hasAnyResources = resources.length > 0;
+                      return hasAnyResources ? (
+                        <>
+                          <select
+                            value={step.resource ?? ""}
+                            onChange={(e) => onUpdateStep(step.id, { resource: e.target.value || undefined })}
+                            className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+                          >
+                            <option value="">— No document assigned —</option>
+                            {docResources.length > 0 && (
+                              <optgroup label="Documents">
+                                {docResources.map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.title}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {resources.filter((r) => !docResources.includes(r)).length > 0 && (
+                              <optgroup label="Other Resources">
+                                {resources.filter((r) => !docResources.includes(r)).map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.title} ({r.type})
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                          {step.resource && (() => {
+                            const matched = resources.find((r) => r.id === step.resource);
+                            if (!matched) return null;
+                            return (
+                              <p className="text-[9px] text-muted-foreground/60 leading-relaxed mt-1 line-clamp-2">
+                                {matched.description}
+                                {matched.url && (
+                                  <a
+                                    href={matched.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="ml-1 text-primary hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    ↗ Open
+                                  </a>
+                                )}
+                              </p>
+                            );
+                          })()}
+                        </>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground/50 italic py-1">
+                          No resources defined. Add documents in the Scenario Library.
+                        </p>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Resource — for non-document types */}
+            {step.type !== "document" && (
+              <>
+                <SectionHeader label="Resource" />
+                <div className="px-4 pb-3">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                      Assigned Resource
+                    </label>
+                    {resources.length > 0 ? (
+                      <select
+                        value={step.resource ?? ""}
+                        onChange={(e) => onUpdateStep(step.id, { resource: e.target.value || undefined })}
+                        className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+                      >
+                        <option value="">— No resource —</option>
+                        {resources.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.title} ({r.type})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground/50 italic py-1">
+                        No resources defined. Add them in the Scenario Library.
+                      </p>
+                    )}
+                    {step.resource && resources.length > 0 && (() => {
+                      const matched = resources.find((r) => r.id === step.resource);
+                      if (!matched) return null;
+                      return (
+                        <p className="text-[9px] text-muted-foreground/60 leading-relaxed mt-1 line-clamp-2">
+                          {matched.description}
+                          {matched.url && (
+                            <a
+                              href={matched.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-1 text-primary hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              ↗ Open
+                            </a>
+                          )}
+                        </p>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Tasks */}
             <SectionHeader label="Tasks" count={step.tasks?.length ?? 0} />

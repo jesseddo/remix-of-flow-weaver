@@ -120,3 +120,12 @@ export interface ScenarioData {
   personas: Persona[];
   resources: ScenarioResource[];
 }
+
+export interface ModuleData {
+  id: string;
+  title: string;
+  description: string;
+  personas: Persona[];
+  resources: ScenarioResource[];
+  scenarios: ScenarioData[];
+}

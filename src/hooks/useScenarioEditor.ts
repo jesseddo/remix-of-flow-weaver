@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   ScenarioData,
+  ScenarioStep,
   ScenarioTask,
   ScenarioPath,
   PrerequisiteCondition,
@@ -11,10 +12,10 @@ import {
   NodeType,
   StepEvaluation,
   EvaluationCompetency,
+  OutcomeNode,
+  GlobalTimer,
 } from "@/types/scenario";
 import { stepEvaluationHasContent } from "@/data/evaluationCompetencies";
-import { transformScenario, JsonScenario } from "@/data/transformScenario";
-import { exportToJsonFile } from "@/utils/exportToJson";
 
 export interface UpdatePathPatch {
   label?: string;
@@ -60,24 +61,72 @@ function deriveFlowType(pathCount: number): "conditional" | "gated" | "linear" {
   return "linear";
 }
 
-export function useScenarioEditor(originalJson: JsonScenario | null) {
-  const [data, setData] = useState<ScenarioData | null>(() =>
-    originalJson ? transformScenario(originalJson) : null
-  );
+export interface ScenarioEditorCallbacks {
+  onPersonasChange?: (personas: Persona[]) => void;
+  onResourcesChange?: (resources: ScenarioResource[]) => void;
+  onScenarioChange?: (data: ScenarioData) => void;
+}
+
+export function useScenarioEditor(
+  initialData: ScenarioData | null,
+  modulePersonas?: Persona[],
+  moduleResources?: ScenarioResource[],
+  callbacks?: ScenarioEditorCallbacks,
+) {
+  const [data, setData] = useState<ScenarioData | null>(initialData);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [isNewScenario, setIsNewScenario] = useState(false);
+  const skipNextResetRef = useRef(false);
 
   useEffect(() => {
-    setData(originalJson ? transformScenario(originalJson) : null);
+    if (skipNextResetRef.current) {
+      skipNextResetRef.current = false;
+      return;
+    }
+    setData(initialData);
     setSelectedStepId(null);
     setIsDirty(false);
-  }, [originalJson]);
+    setIsNewScenario(false);
+  }, [initialData]);
+
+  useEffect(() => {
+    if (!data) return;
+    if (modulePersonas) {
+      setData((prev) => prev ? { ...prev, personas: modulePersonas } : prev);
+    }
+  }, [modulePersonas]);
+
+  useEffect(() => {
+    if (!data) return;
+    if (moduleResources) {
+      setData((prev) => prev ? { ...prev, resources: moduleResources } : prev);
+    }
+  }, [moduleResources]);
 
   const markDirty = useCallback(() => setIsDirty(true), []);
 
+  const notifyChange = useCallback((next: ScenarioData) => {
+    callbacks?.onScenarioChange?.(next);
+  }, [callbacks]);
+
+  const setDataAndNotify = useCallback(
+    (updater: (prev: ScenarioData | null) => ScenarioData | null) => {
+      setData((prev) => {
+        const next = updater(prev);
+        if (next && next !== prev) {
+          skipNextResetRef.current = true;
+          callbacks?.onScenarioChange?.(next);
+        }
+        return next;
+      });
+    },
+    [callbacks],
+  );
+
   const updatePath = useCallback(
     (stepId: string, pathId: string, patch: UpdatePathPatch) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -98,12 +147,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
   const addPath = useCallback(
     (stepId: string, path: ScenarioPath) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -119,12 +168,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
   const deletePath = useCallback(
     (stepId: string, pathId: string) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -140,12 +189,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
   const setPathTarget = useCallback(
     (stepId: string, pathId: string, target: PathTarget) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -180,12 +229,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
   const updateTask = useCallback(
     (stepId: string, taskId: string, patch: UpdateTaskPatch) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -206,12 +255,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
   const addTask = useCallback(
     (stepId: string, task: ScenarioTask) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -227,10 +276,9 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
-  /** One atomic update: append task + set path prerequisite (avoids two setData calls racing). */
   const addPathConditionTask = useCallback(
     (
       stepId: string,
@@ -238,7 +286,7 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       task: ScenarioTask,
       prerequisite: PrerequisiteCondition,
     ) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -260,12 +308,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
   const deleteTask = useCallback(
     (stepId: string, taskId: string) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -281,12 +329,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
   const updatePersona = useCallback(
     (stepId: string, patch: UpdatePersonaPatch) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -300,12 +348,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
   const updateStep = useCallback(
     (stepId: string, patch: UpdateStepPatch) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -319,12 +367,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
   const updateEvaluation = useCallback(
     (stepId: string, patch: UpdateEvaluationPatch) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -352,12 +400,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
   const clearEvaluation = useCallback(
     (stepId: string) => {
-      setData((prev) => {
+      setDataAndNotify((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -374,96 +422,297 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, setDataAndNotify]
   );
 
-  // ── Persona catalog ──────────────────────────────────────────────
+  // ── Persona catalog (delegates to module via callbacks) ─────────
 
   const addPersonaToCatalog = useCallback(
     (persona: Persona) => {
       setData((prev) => {
         if (!prev) return prev;
-        return { ...prev, personas: [...prev.personas, persona] };
+        const next = { ...prev, personas: [...prev.personas, persona] };
+        skipNextResetRef.current = true;
+        callbacks?.onPersonasChange?.(next.personas);
+        return next;
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, callbacks]
   );
 
   const updatePersonaCatalog = useCallback(
     (id: string, patch: Partial<Persona>) => {
       setData((prev) => {
         if (!prev) return prev;
-        return {
+        const next = {
           ...prev,
           personas: prev.personas.map((p) => (p.id === id ? { ...p, ...patch } : p)),
         };
+        skipNextResetRef.current = true;
+        callbacks?.onPersonasChange?.(next.personas);
+        return next;
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, callbacks]
   );
 
   const deletePersonaFromCatalog = useCallback(
     (id: string) => {
       setData((prev) => {
         if (!prev) return prev;
-        return { ...prev, personas: prev.personas.filter((p) => p.id !== id) };
+        const next = { ...prev, personas: prev.personas.filter((p) => p.id !== id) };
+        skipNextResetRef.current = true;
+        callbacks?.onPersonasChange?.(next.personas);
+        return next;
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, callbacks]
   );
 
-  // ── Resource catalog ─────────────────────────────────────────────
+  // ── Resource catalog (delegates to module via callbacks) ─────────
 
   const addResourceToCatalog = useCallback(
     (resource: ScenarioResource) => {
       setData((prev) => {
         if (!prev) return prev;
-        return { ...prev, resources: [...prev.resources, resource] };
+        const next = { ...prev, resources: [...prev.resources, resource] };
+        skipNextResetRef.current = true;
+        callbacks?.onResourcesChange?.(next.resources);
+        return next;
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, callbacks]
   );
 
   const updateResourceCatalog = useCallback(
     (id: string, patch: Partial<ScenarioResource>) => {
       setData((prev) => {
         if (!prev) return prev;
-        return {
+        const next = {
           ...prev,
           resources: prev.resources.map((r) => (r.id === id ? { ...r, ...patch } : r)),
         };
+        skipNextResetRef.current = true;
+        callbacks?.onResourcesChange?.(next.resources);
+        return next;
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, callbacks]
   );
 
   const deleteResourceFromCatalog = useCallback(
     (id: string) => {
       setData((prev) => {
         if (!prev) return prev;
-        return { ...prev, resources: prev.resources.filter((r) => r.id !== id) };
+        const next = { ...prev, resources: prev.resources.filter((r) => r.id !== id) };
+        skipNextResetRef.current = true;
+        callbacks?.onResourcesChange?.(next.resources);
+        return next;
       });
       markDirty();
     },
-    [markDirty]
+    [markDirty, callbacks]
   );
 
-  const exportToJson = useCallback(() => {
-    if (!data || !originalJson) return;
-    exportToJsonFile(data, originalJson);
-    setIsDirty(false);
-  }, [data, originalJson]);
+  // ── Scenario creation ────────────────────────────────────────
+
+  const createBlankScenario = useCallback((title: string, description: string) => {
+    skipNextResetRef.current = true;
+    const id = `scenario-${Date.now()}`;
+    const newData: ScenarioData = {
+      title,
+      scenarioNode: {
+        id,
+        title,
+        description,
+        steps: [],
+        position: { x: 60, y: 80 },
+      },
+      outcomeNodes: [],
+      globalTimers: [],
+      personas: modulePersonas ?? [],
+      resources: moduleResources ?? [],
+    };
+    setData(newData);
+    setSelectedStepId(null);
+    setIsDirty(true);
+    setIsNewScenario(true);
+  }, [modulePersonas, moduleResources]);
+
+  const updateTitle = useCallback((title: string) => {
+    setDataAndNotify((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        title,
+        scenarioNode: { ...prev.scenarioNode, title },
+      };
+    });
+    markDirty();
+  }, [markDirty, setDataAndNotify]);
+
+  const updateDescription = useCallback((description: string) => {
+    setDataAndNotify((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        scenarioNode: { ...prev.scenarioNode, description },
+      };
+    });
+    markDirty();
+  }, [markDirty, setDataAndNotify]);
+
+  const addNewStep = useCallback((nodeType: NodeType = "chat") => {
+    setDataAndNotify((prev) => {
+      if (!prev) return prev;
+      const stepNum = (prev.scenarioNode.steps?.length ?? 0) + 1;
+      const newStep: ScenarioStep = {
+        id: `step-${Date.now()}`,
+        title: `Step ${stepNum}`,
+        type: nodeType,
+        description: "",
+        tags: [],
+        flowType: "linear",
+        tasks: [],
+        paths: [],
+      };
+      return {
+        ...prev,
+        scenarioNode: {
+          ...prev.scenarioNode,
+          steps: [...(prev.scenarioNode.steps ?? []), newStep],
+        },
+      };
+    });
+    markDirty();
+  }, [markDirty, setDataAndNotify]);
+
+  const deleteStep = useCallback((stepId: string) => {
+    setDataAndNotify((prev) => {
+      if (!prev) return prev;
+      const steps = prev.scenarioNode.steps?.filter((s) => s.id !== stepId) ?? [];
+      const cleaned = steps.map((step) => ({
+        ...step,
+        paths: step.paths?.map((p) => {
+          if (p.targetStepId === stepId) {
+            const { targetStepId: _, ...rest } = p;
+            return rest;
+          }
+          return p;
+        }),
+      }));
+      return {
+        ...prev,
+        scenarioNode: { ...prev.scenarioNode, steps: cleaned },
+      };
+    });
+    if (selectedStepId === stepId) setSelectedStepId(null);
+    markDirty();
+  }, [markDirty, selectedStepId, setDataAndNotify]);
+
+  const addOutcomeNode = useCallback((outcomeType: OutcomeType) => {
+    setDataAndNotify((prev) => {
+      if (!prev) return prev;
+      const num = prev.outcomeNodes.length + 1;
+      const newOutcome: OutcomeNode = {
+        id: `outcome-${Date.now()}`,
+        title: outcomeType === "safe_path" ? `Success ${num}` :
+               outcomeType === "partial_failure" ? `Partial Failure ${num}` :
+               `Critical Failure ${num}`,
+        type: "chat",
+        description: "",
+        tags: [outcomeType === "safe_path" ? "Safe Outcome" :
+               outcomeType === "partial_failure" ? "Partial Failure" :
+               "Critical Failure"],
+        outcome: outcomeType,
+        position: { x: 800, y: 80 + (num - 1) * 300 },
+      };
+      return {
+        ...prev,
+        outcomeNodes: [...prev.outcomeNodes, newOutcome],
+      };
+    });
+    markDirty();
+  }, [markDirty, setDataAndNotify]);
+
+  const deleteOutcomeNode = useCallback((outcomeId: string) => {
+    setDataAndNotify((prev) => {
+      if (!prev) return prev;
+      const steps = (prev.scenarioNode.steps ?? []).map((step) => ({
+        ...step,
+        paths: step.paths?.map((p) => {
+          if (p.connections?.some((c) => c.targetNodeId === outcomeId)) {
+            return { ...p, connections: p.connections?.filter((c) => c.targetNodeId !== outcomeId) };
+          }
+          return p;
+        }),
+      }));
+      return {
+        ...prev,
+        scenarioNode: { ...prev.scenarioNode, steps },
+        outcomeNodes: prev.outcomeNodes.filter((o) => o.id !== outcomeId),
+      };
+    });
+    markDirty();
+  }, [markDirty, setDataAndNotify]);
+
+  const updateOutcomeNode = useCallback((id: string, patch: Partial<Pick<OutcomeNode, "title" | "description" | "outcome">>) => {
+    setDataAndNotify((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        outcomeNodes: prev.outcomeNodes.map((o) => (o.id === id ? { ...o, ...patch } : o)),
+      };
+    });
+    markDirty();
+  }, [markDirty, setDataAndNotify]);
+
+  const addGlobalTimer = useCallback(() => {
+    setDataAndNotify((prev) => {
+      if (!prev) return prev;
+      const num = prev.globalTimers.length + 1;
+      const firstStepId = prev.scenarioNode.steps?.[0]?.id ?? "";
+      const timer: GlobalTimer = {
+        id: `timer-${Date.now()}`,
+        name: `Timer ${num}`,
+        timeoutMs: 120000,
+        targetStepId: firstStepId,
+      };
+      return { ...prev, globalTimers: [...prev.globalTimers, timer] };
+    });
+    markDirty();
+  }, [markDirty, setDataAndNotify]);
+
+  const deleteGlobalTimer = useCallback((timerId: string) => {
+    setDataAndNotify((prev) => {
+      if (!prev) return prev;
+      return { ...prev, globalTimers: prev.globalTimers.filter((t) => t.id !== timerId) };
+    });
+    markDirty();
+  }, [markDirty, setDataAndNotify]);
+
+  const updateGlobalTimer = useCallback((id: string, patch: Partial<Pick<GlobalTimer, "name" | "timeoutMs" | "targetStepId">>) => {
+    setDataAndNotify((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        globalTimers: prev.globalTimers.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+      };
+    });
+    markDirty();
+  }, [markDirty, setDataAndNotify]);
 
   return {
     data,
     selectedStepId,
     setSelectedStepId,
     isDirty,
+    isNewScenario,
     updatePath,
     addPath,
     deletePath,
@@ -482,6 +731,16 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
     addResourceToCatalog,
     updateResourceCatalog,
     deleteResourceFromCatalog,
-    exportToJson,
+    createBlankScenario,
+    updateTitle,
+    updateDescription,
+    addNewStep,
+    deleteStep,
+    addOutcomeNode,
+    deleteOutcomeNode,
+    updateOutcomeNode,
+    addGlobalTimer,
+    deleteGlobalTimer,
+    updateGlobalTimer,
   };
 }

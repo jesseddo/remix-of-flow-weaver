@@ -364,9 +364,26 @@ const NodeCanvas = ({
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(0.75);
 
-  // Standard mode state
+  // Standard mode state — synced from prop, preserving drag positions
   const [scenarioNode, setScenarioNode] = useState<ScenarioNode>(scenario.scenarioNode);
   const [outcomeNodes, setOutcomeNodes] = useState<OutcomeNode[]>(scenario.outcomeNodes);
+
+  useEffect(() => {
+    setScenarioNode((prev) => ({
+      ...scenario.scenarioNode,
+      position: prev.position,
+    }));
+  }, [scenario.scenarioNode]);
+
+  useEffect(() => {
+    setOutcomeNodes((prev) => {
+      const posMap = new Map(prev.map((n) => [n.id, n.position]));
+      return scenario.outcomeNodes.map((n) => ({
+        ...n,
+        position: posMap.get(n.id) ?? n.position,
+      }));
+    });
+  }, [scenario.outcomeNodes]);
 
   // Modal mode: position map
   const computedModalPositions = useMemo(
@@ -625,7 +642,6 @@ const NodeCanvas = ({
   }, [displayMode, modalPositions, scenarioNode, outcomeNodes]);
 
   const globalTimers = scenario.globalTimers ?? [];
-  const totalNodes = steps.length + outcomeNodes.length + globalTimers.length;
 
   const modalOutcomeNodes = useMemo(
     () =>
@@ -652,61 +668,52 @@ const NodeCanvas = ({
       onWheel={handleWheel}
       onClick={handleCanvasClick}
     >
-      <div className="absolute top-0 left-0 right-0 z-10 px-6 py-3 bg-background/80 backdrop-blur-sm border-b border-border">
-        <h1 className="text-lg font-bold text-foreground">{scenario.title}</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {displayMode === "modal"
-            ? `${totalNodes} nodes · ${steps.length} steps · ${scenario.outcomeNodes.length} outcomes · Scroll to zoom · Drag to pan/move · Click step to inspect`
-            : `${1 + outcomeNodes.length} nodes · ${scenarioNode.steps?.length || 0} steps · Scroll to zoom · Drag canvas to pan · Click step to inspect`}
-        </p>
-
-        {/* Spotlight pill bar — modal mode only */}
-        {displayMode === "modal" && scenario.outcomeNodes.length > 0 && (
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-[10px] text-muted-foreground font-medium">Spotlight path to:</span>
-            <div className="flex items-center gap-1.5">
-              {scenario.outcomeNodes.map((o) => {
-                const isActive = spotlightOutcomeId === o.id;
-                const color = outcomeColor[o.outcome] ?? "hsl(220, 15%, 55%)";
-                return (
-                  <button
-                    key={o.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSpotlightOutcomeId((prev) => (prev === o.id ? null : o.id));
-                    }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all duration-150"
-                    style={{
-                      background: isActive ? color : "transparent",
-                      color: isActive ? "white" : color,
-                      border: `1.5px solid ${color}`,
-                      opacity: spotlightOutcomeId && !isActive ? 0.35 : 1,
-                      boxShadow: isActive ? `0 0 8px ${color}60` : "none",
-                    }}
-                  >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: isActive ? "white" : color }}
-                    />
-                    {o.title}
-                  </button>
-                );
-              })}
-            </div>
-            {spotlightOutcomeId && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSpotlightOutcomeId(null);
-                }}
-                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors ml-1 px-1.5 py-0.5 rounded hover:bg-secondary"
-              >
-                ✕ clear
-              </button>
-            )}
+      {/* Spotlight pill bar — modal mode only */}
+      {displayMode === "modal" && scenario.outcomeNodes.length > 0 && (
+        <div className="absolute top-3 left-4 right-4 z-10 flex items-center gap-2 pointer-events-none">
+          <span className="text-[10px] text-muted-foreground font-medium pointer-events-auto">Spotlight path to:</span>
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            {scenario.outcomeNodes.map((o) => {
+              const isActive = spotlightOutcomeId === o.id;
+              const color = outcomeColor[o.outcome] ?? "hsl(220, 15%, 55%)";
+              return (
+                <button
+                  key={o.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSpotlightOutcomeId((prev) => (prev === o.id ? null : o.id));
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all duration-150"
+                  style={{
+                    background: isActive ? color : "hsl(var(--background) / 0.8)",
+                    color: isActive ? "white" : color,
+                    border: `1.5px solid ${color}`,
+                    opacity: spotlightOutcomeId && !isActive ? 0.35 : 1,
+                    boxShadow: isActive ? `0 0 8px ${color}60` : "none",
+                  }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ background: isActive ? "white" : color }}
+                  />
+                  {o.title}
+                </button>
+              );
+            })}
           </div>
-        )}
-      </div>
+          {spotlightOutcomeId && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSpotlightOutcomeId(null);
+              }}
+              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors ml-1 px-1.5 py-0.5 rounded hover:bg-secondary pointer-events-auto"
+            >
+              ✕ clear
+            </button>
+          )}
+        </div>
+      )}
 
       <div
         className="relative"

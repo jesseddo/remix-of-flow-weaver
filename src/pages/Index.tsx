@@ -1,61 +1,71 @@
 import { useState, useMemo, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import NodeCanvas from "@/components/NodeCanvas";
 import { StepDetailPanel } from "@/components/StepDetailPanel";
 import { ScenarioLibraryPanel } from "@/components/ScenarioLibraryPanel";
 import { WalkthroughPanel } from "@/components/WalkthroughPanel";
+import { ScenarioMetadataPopover } from "@/components/ScenarioMetadataPopover";
+import { ScenarioCreationToolbar } from "@/components/ScenarioCreationToolbar";
 import { useScenarioEditor } from "@/hooks/useScenarioEditor";
-import originalJson from "@/data/scenarios.json";
-import scriptJson from "@/data/scenarios-script.json";
-import { JsonScenario } from "@/data/transformScenario";
+import { useModuleContext } from "@/contexts/ModuleContext";
 import { validateScenario } from "@/utils/scenarioValidation";
-import { Download, Library, Play } from "lucide-react";
+import { ScenarioData } from "@/types/scenario";
+import { Download, Library, Play, ArrowLeft } from "lucide-react";
 
 export type DisplayMode = "steps" | "grouped" | "modal";
 
-/** Reserve space for bottom walkthrough dock so the graph can pan above it. */
 const WALKTHROUGH_DOCK_INSET_PX = 340;
 
-const sources = [
-  { key: "original", label: "Original", data: originalJson as JsonScenario[] },
-  { key: "script",   label: "Script (V3)", data: scriptJson as JsonScenario[] },
-];
-
 const Index = () => {
-  const [sourceKey, setSourceKey] = useState(sources[0].key);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>("steps");
+  const { moduleId, scenarioId } = useParams<{ moduleId: string; scenarioId: string }>();
+  const navigate = useNavigate();
+  const moduleCtx = useModuleContext();
 
-  const availableScenarios = useMemo(() => {
-    const src = sources.find((s) => s.key === sourceKey)!;
-    return src.data.filter((s) => s.scenes && s.scenes.length > 0);
-  }, [sourceKey]);
-
-  const [selectedId, setSelectedId] = useState(availableScenarios[0]?.id ?? "");
-
-  const activeId = availableScenarios.find((s) => s.id === selectedId)
-    ? selectedId
-    : availableScenarios[0]?.id ?? "";
-
-  const handleSourceChange = useCallback((key: string) => {
-    setSourceKey(key);
-    const next = sources.find((s) => s.key === key)!;
-    const nextAvailable = next.data.filter((s) => s.scenes && s.scenes.length > 0);
-    setSelectedId(nextAvailable[0]?.id ?? "");
-  }, []);
-
-  const activeJsonScenario = useMemo(
-    () => availableScenarios.find((s) => s.id === activeId) ?? null,
-    [availableScenarios, activeId]
+  const currentModule = useMemo(
+    () => moduleCtx.modules.find((m) => m.id === moduleId) ?? null,
+    [moduleCtx.modules, moduleId]
   );
 
-  const [libraryOpen, setLibraryOpen] = useState(false);
-  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
-  const [walkthroughHighlightId, setWalkthroughHighlightId] = useState<string | null>(null);
+  const initialScenarioData = useMemo(
+    () => currentModule?.scenarios.find((s) => s.scenarioNode.id === scenarioId) ?? null,
+    [currentModule, scenarioId]
+  );
 
-  const handleHighlightStep = useCallback((id: string | null) => {
-    setWalkthroughHighlightId(id);
-  }, []);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("steps");
 
-  const editor = useScenarioEditor(activeJsonScenario);
+  const handleScenarioChange = useCallback(
+    (updated: ScenarioData) => {
+      if (moduleId && scenarioId) {
+        moduleCtx.updateScenarioInModule(moduleId, scenarioId, updated);
+      }
+    },
+    [moduleCtx, moduleId, scenarioId]
+  );
+
+  const handlePersonasChange = useCallback(
+    (personas: typeof currentModule extends null ? never : NonNullable<typeof currentModule>["personas"]) => {
+      if (moduleId) moduleCtx.updateModulePersonas(moduleId, personas);
+    },
+    [moduleCtx, moduleId]
+  );
+
+  const handleResourcesChange = useCallback(
+    (resources: typeof currentModule extends null ? never : NonNullable<typeof currentModule>["resources"]) => {
+      if (moduleId) moduleCtx.updateModuleResources(moduleId, resources);
+    },
+    [moduleCtx, moduleId]
+  );
+
+  const editor = useScenarioEditor(
+    initialScenarioData,
+    currentModule?.personas,
+    currentModule?.resources,
+    {
+      onScenarioChange: handleScenarioChange,
+      onPersonasChange: handlePersonasChange,
+      onResourcesChange: handleResourcesChange,
+    },
+  );
 
   const selectedStep = useMemo(() => {
     if (!editor.selectedStepId || !editor.data) return null;
@@ -82,185 +92,228 @@ const Index = () => {
     [editor.data],
   );
 
-  if (availableScenarios.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-screen text-muted-foreground">
-        No scenarios with scenes found.
-      </div>
-    );
-  }
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+  const [walkthroughHighlightId, setWalkthroughHighlightId] = useState<string | null>(null);
+
+  const handleHighlightStep = useCallback((id: string | null) => {
+    setWalkthroughHighlightId(id);
+  }, []);
+
+  const handleNewScenario = useCallback(
+    (title: string, description: string) => {
+      editor.createBlankScenario(title, description);
+    },
+    [editor]
+  );
+
+  const handleExport = useCallback(() => {
+    if (moduleId) {
+      moduleCtx.exportModule(moduleId);
+    }
+  }, [moduleCtx, moduleId]);
+
+  const steps = editor.data?.scenarioNode.steps ?? [];
+  const outcomeNodes = editor.data?.outcomeNodes ?? [];
+  const totalNodes = steps.length + outcomeNodes.length + (editor.data?.globalTimers.length ?? 0);
 
   return (
     <div className="flex flex-col w-full h-screen overflow-hidden">
-      {/* Main area: canvas + panels stacked vertically */}
-      <div className="relative flex-1 min-h-0 min-w-0">
-
-      {/* Top bar */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3">
-        {/* Source toggle */}
-        <div className="flex rounded-lg border border-border bg-background shadow-sm overflow-hidden">
-          {sources.map((src) => (
-            <button
-              key={src.key}
-              onClick={() => handleSourceChange(src.key)}
-              className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-                sourceKey === src.key
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              {src.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Display mode toggle */}
-        <div className="flex rounded-lg border border-border bg-background shadow-sm overflow-hidden">
-          {(
-            [
-              ["steps", "Steps"],
-              ["grouped", "Grouped Steps"],
-              ["modal", "Modal Steps"],
-            ] as const
-          ).map(([mode, label]) => (
-            <button
-              key={mode}
-              onClick={() => setDisplayMode(mode)}
-              className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-                displayMode === mode
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Scenario dropdown */}
-        {availableScenarios.length > 1 && (
-          <select
-            value={activeId}
-            onChange={(e) => setSelectedId(e.target.value)}
-            className="bg-background border border-border rounded-md px-3 py-1.5 text-sm font-medium text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-          >
-            {availableScenarios.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title} ({s.version})
-              </option>
-            ))}
-          </select>
-        )}
-
-        {/* Library toggle */}
-        <button
-          onClick={() => setLibraryOpen((v) => !v)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border shadow-sm transition-colors ${
-            libraryOpen
-              ? "bg-primary text-primary-foreground border-primary"
-              : "border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted"
-          }`}
-          title="Open Scenario Library"
-        >
-          <Library className="w-3.5 h-3.5" />
-          Library
-        </button>
-
-        {/* Export JSON */}
-        <button
-          onClick={editor.exportToJson}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-border bg-background shadow-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          title={editor.isDirty ? "You have unsaved changes — click to download" : "Download edited scenario as JSON"}
-        >
-          <Download className="w-3.5 h-3.5" />
-          Export
-          {editor.isDirty && (
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-          )}
-        </button>
-
-        {/* Preview Walkthrough */}
-        {editor.data && (
+      {/* Header */}
+      <div className="shrink-0 border-b border-border bg-background">
+        <div className="px-4 py-1.5 flex items-center gap-3 min-h-[40px]">
+          {/* Back button */}
           <button
-            onClick={() => setWalkthroughOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border shadow-sm transition-colors border-emerald-700/60 bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/70 hover:text-emerald-200 hover:border-emerald-600"
-            title="Preview scenario as a learner walkthrough"
+            onClick={() => navigate("/")}
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors shrink-0"
           >
-            <Play className="w-3.5 h-3.5" />
-            Preview Walkthrough
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Modules
           </button>
-        )}
+
+          <div className="w-px h-5 bg-border/60 shrink-0" />
+
+          {currentModule && (
+            <span className="text-[10px] text-muted-foreground/60 shrink-0 truncate max-w-[120px]">
+              {currentModule.title}
+            </span>
+          )}
+
+          {editor.data ? (
+            <div className="flex items-center gap-3 min-w-0 shrink-0">
+              {editor.isNewScenario ? (
+                <input
+                  type="text"
+                  value={editor.data.title}
+                  onChange={(e) => editor.updateTitle(e.target.value)}
+                  className="text-sm font-bold text-foreground whitespace-nowrap bg-transparent border-b border-dashed border-primary/40 focus:border-primary focus:outline-none px-0.5 max-w-[260px]"
+                  placeholder="Scenario title..."
+                />
+              ) : (
+                <h1 className="text-sm font-bold text-foreground whitespace-nowrap">{editor.data.title}</h1>
+              )}
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                {displayMode === "modal"
+                  ? `${totalNodes} nodes · ${steps.length} steps · ${outcomeNodes.length} outcomes`
+                  : `${1 + outcomeNodes.length} nodes · ${steps.length} steps`}
+              </span>
+              <ScenarioMetadataPopover data={editor.data} />
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground shrink-0">
+              Scenario not found.
+            </p>
+          )}
+
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Display mode toggle */}
+            <div className="flex rounded-lg border border-border bg-background shadow-sm overflow-hidden">
+              {(
+                [
+                  ["steps", "Steps"],
+                  ["grouped", "Grouped"],
+                  ["modal", "Modal"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  onClick={() => setDisplayMode(mode)}
+                  className={`px-3 py-1 text-[11px] font-medium transition-colors ${
+                    displayMode === mode
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Library toggle */}
+            <button
+              onClick={() => setLibraryOpen((v) => !v)}
+              className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-md border shadow-sm transition-colors ${
+                libraryOpen
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+              title="Open Scenario Library"
+            >
+              <Library className="w-3 h-3" />
+              Library
+            </button>
+
+            {/* Export Module JSON */}
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-md border border-border bg-background shadow-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              title="Download module as JSON"
+            >
+              <Download className="w-3 h-3" />
+              Export
+              {editor.isDirty && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+              )}
+            </button>
+
+            {/* Preview Walkthrough */}
+            {editor.data && (
+              <button
+                onClick={() => setWalkthroughOpen(true)}
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-md border shadow-sm transition-colors border-emerald-700/60 bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/70 hover:text-emerald-200 hover:border-emerald-600"
+                title="Preview scenario as a learner walkthrough"
+              >
+                <Play className="w-3 h-3" />
+                Preview
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Canvas — walkthrough uses bottom dock; pan/zoom reserves space above it */}
-      {editor.data ? (
-        <NodeCanvas
-          key={activeId}
-          scenario={editor.data}
-          displayMode={displayMode}
-          selectedStepId={walkthroughOpen ? walkthroughHighlightId : editor.selectedStepId}
-          onSelectStep={walkthroughOpen ? undefined : editor.setSelectedStepId}
-          validationWarnings={validationWarnings}
-          walkthroughMode={walkthroughOpen}
-          walkthroughBottomInset={walkthroughOpen ? WALKTHROUGH_DOCK_INSET_PX : 0}
-        />
-      ) : (
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          Could not parse selected scenario
-        </div>
-      )}
-
-      {/* Scenario Library — fixed, slides in from the left */}
-      <ScenarioLibraryPanel
-        isOpen={libraryOpen}
-        data={editor.data}
-        onClose={() => setLibraryOpen(false)}
-        onAddPersona={editor.addPersonaToCatalog}
-        onUpdatePersona={editor.updatePersonaCatalog}
-        onDeletePersona={editor.deletePersonaFromCatalog}
-        onAddResource={editor.addResourceToCatalog}
-        onUpdateResource={editor.updateResourceCatalog}
-        onDeleteResource={editor.deleteResourceFromCatalog}
+      {/* Creation Toolbar */}
+      <ScenarioCreationToolbar
+        hasScenario={!!editor.data}
+        onNewScenario={handleNewScenario}
+        onAddStep={(type) => editor.addNewStep(type)}
+        onAddOutcome={editor.addOutcomeNode}
+        onAddTimer={editor.addGlobalTimer}
+        onSave={handleExport}
+        isDirty={editor.isDirty}
       />
 
-      {/* Step detail panel — suppressed during walkthrough preview */}
-      {!walkthroughOpen && (
-        <StepDetailPanel
-          step={selectedStep}
-          stepIndex={selectedStepIndex}
-          allSteps={allSteps}
-          outcomeNodes={editor.data?.outcomeNodes ?? []}
-          personas={editor.data?.personas ?? []}
-          resources={editor.data?.resources ?? []}
-          onClose={() => editor.setSelectedStepId(null)}
-          onUpdatePath={editor.updatePath}
-          onAddPath={editor.addPath}
-          onDeletePath={editor.deletePath}
-          onUpdateTask={editor.updateTask}
-          onAddTask={editor.addTask}
-          onAddPathCondition={editor.addPathConditionTask}
-          onDeleteTask={editor.deleteTask}
-          onUpdatePersona={editor.updatePersona}
-          onUpdateStep={editor.updateStep}
-          onSetPathTarget={editor.setPathTarget}
-          onUpdateEvaluation={editor.updateEvaluation}
-          onClearEvaluation={editor.clearEvaluation}
-        />
-      )}
+      {/* Main area: canvas + panels */}
+      <div className="relative flex-1 min-h-0 min-w-0">
+        {editor.data ? (
+          <NodeCanvas
+            key={scenarioId ?? ""}
+            scenario={editor.data}
+            displayMode={displayMode}
+            selectedStepId={walkthroughOpen ? walkthroughHighlightId : editor.selectedStepId}
+            onSelectStep={walkthroughOpen ? undefined : editor.setSelectedStepId}
+            validationWarnings={validationWarnings}
+            walkthroughMode={walkthroughOpen}
+            walkthroughBottomInset={walkthroughOpen ? WALKTHROUGH_DOCK_INSET_PX : 0}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground">
+            Scenario not found. Go back to the Module Manager.
+          </div>
+        )}
 
-      {/* Walkthrough panel overlay */}
-      {walkthroughOpen && editor.data && (
-        <WalkthroughPanel
-          scenario={editor.data}
-          onExit={() => {
-            setWalkthroughOpen(false);
-            setWalkthroughHighlightId(null);
-          }}
-          onHighlightStep={handleHighlightStep}
+        {/* Scenario Library */}
+        <ScenarioLibraryPanel
+          isOpen={libraryOpen}
+          data={editor.data}
+          onClose={() => setLibraryOpen(false)}
+          onAddPersona={editor.addPersonaToCatalog}
+          onUpdatePersona={editor.updatePersonaCatalog}
+          onDeletePersona={editor.deletePersonaFromCatalog}
+          onAddResource={editor.addResourceToCatalog}
+          onUpdateResource={editor.updateResourceCatalog}
+          onDeleteResource={editor.deleteResourceFromCatalog}
         />
-      )}
 
-      </div>{/* end main canvas area */}
+        {/* Step detail panel */}
+        {!walkthroughOpen && (
+          <StepDetailPanel
+            step={selectedStep}
+            stepIndex={selectedStepIndex}
+            allSteps={allSteps}
+            outcomeNodes={editor.data?.outcomeNodes ?? []}
+            personas={editor.data?.personas ?? []}
+            resources={editor.data?.resources ?? []}
+            onClose={() => editor.setSelectedStepId(null)}
+            onUpdatePath={editor.updatePath}
+            onAddPath={editor.addPath}
+            onDeletePath={editor.deletePath}
+            onUpdateTask={editor.updateTask}
+            onAddTask={editor.addTask}
+            onAddPathCondition={editor.addPathConditionTask}
+            onDeleteTask={editor.deleteTask}
+            onUpdatePersona={editor.updatePersona}
+            onUpdateStep={editor.updateStep}
+            onSetPathTarget={editor.setPathTarget}
+            onUpdateEvaluation={editor.updateEvaluation}
+            onClearEvaluation={editor.clearEvaluation}
+            onAddPersonaToCatalog={editor.addPersonaToCatalog}
+          />
+        )}
+
+        {/* Walkthrough panel overlay */}
+        {walkthroughOpen && editor.data && (
+          <WalkthroughPanel
+            scenario={editor.data}
+            onExit={() => {
+              setWalkthroughOpen(false);
+              setWalkthroughHighlightId(null);
+            }}
+            onHighlightStep={handleHighlightStep}
+          />
+        )}
+      </div>
     </div>
   );
 };

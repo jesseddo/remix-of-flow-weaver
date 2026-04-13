@@ -1,5 +1,6 @@
 import {
   ScenarioData,
+  ModuleData,
   ScenarioStep,
   OutcomeNode,
   StepConnection,
@@ -81,7 +82,7 @@ interface JsonOutcome {
   url?: string;
 }
 
-interface JsonTeamMember {
+export interface JsonTeamMember {
   name: string;
   role: string;
   description: string;
@@ -92,6 +93,14 @@ interface JsonGlobalTimer {
   name: string;
   timeout_ms: number;
   target_id: string;
+}
+
+export interface JsonSceneResource {
+  id?: string;
+  title: string;
+  type: string;
+  description?: string;
+  url?: string;
 }
 
 export interface JsonScenario {
@@ -106,10 +115,19 @@ export interface JsonScenario {
   unit?: string;
   media?: { type: string; url: string }[];
   team?: JsonTeamMember[];
-  sceneResources?: { id?: string; title: string; type: string; description?: string; url?: string }[];
+  sceneResources?: JsonSceneResource[];
   outcomes?: JsonOutcome[];
   scenes?: JsonScene[];
   globalTimers?: JsonGlobalTimer[];
+}
+
+export interface JsonModule {
+  id: string;
+  title: string;
+  description: string;
+  team?: JsonTeamMember[];
+  sceneResources?: JsonSceneResource[];
+  scenarios: JsonScenario[];
 }
 
 function inferOutcomeType(scene: JsonScene): "safe_path" | "partial_failure" | "critical_failure" {
@@ -181,7 +199,15 @@ function inferTags(scene: JsonScene): string[] {
   return tags.length > 0 ? tags : ["Scenario Step"];
 }
 
-export function transformScenario(json: JsonScenario): ScenarioData | null {
+export interface TransformScenarioOptions {
+  externalPersonas?: Persona[];
+  externalResources?: ScenarioResource[];
+}
+
+export function transformScenario(
+  json: JsonScenario,
+  options?: TransformScenarioOptions,
+): ScenarioData | null {
   if (!json.scenes || json.scenes.length === 0) return null;
 
   const terminalSceneIds = new Set(
@@ -191,23 +217,26 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
   const stepScenes = json.scenes.filter((s) => s.paths && s.paths.length > 0);
   const outcomeScenes = json.scenes.filter((s) => !s.paths || s.paths.length === 0);
 
-  const personas: Persona[] = (json.team ?? []).map((t) => ({
-    id: t.name.toLowerCase().replace(/\s+/g, "-"),
-    name: t.name,
-    role: t.role,
-    description: t.description,
-  }));
+  const personas: Persona[] = options?.externalPersonas
+    ?? (json.team ?? []).map((t) => ({
+      id: t.name.toLowerCase().replace(/\s+/g, "-"),
+      name: t.name,
+      role: t.role,
+      description: t.description,
+    }));
 
-  const resources: ScenarioResource[] = (json.sceneResources ?? []).map((r, i) => ({
-    id: r.id ?? `resource-${i}`,
-    title: r.title,
-    type: r.type,
-    description: r.description,
-    url: r.url,
-  }));
+  const resources: ScenarioResource[] = options?.externalResources
+    ?? (json.sceneResources ?? []).map((r, i) => ({
+      id: r.id ?? `resource-${i}`,
+      title: r.title,
+      type: r.type,
+      description: r.description,
+      url: r.url,
+    }));
 
+  const teamForCoach = json.team ?? options?.externalPersonas?.map((p) => ({ name: p.name, role: p.role, description: p.description ?? "" })) ?? [];
   const defaultPersonaName =
-    json.team?.find((t) => t.role.toLowerCase().includes("coach"))?.name ?? "Coach";
+    teamForCoach.find((t) => t.role.toLowerCase().includes("coach"))?.name ?? "Coach";
 
   const steps: ScenarioStep[] = stepScenes.map((scene) => {
     const paths = (scene.paths ?? []).map((path) => {
@@ -313,5 +342,35 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
     globalTimers,
     personas,
     resources,
+  };
+}
+
+export function transformModule(json: JsonModule): ModuleData {
+  const personas: Persona[] = (json.team ?? []).map((t) => ({
+    id: t.name.toLowerCase().replace(/\s+/g, "-"),
+    name: t.name,
+    role: t.role,
+    description: t.description,
+  }));
+
+  const resources: ScenarioResource[] = (json.sceneResources ?? []).map((r, i) => ({
+    id: r.id ?? `resource-${i}`,
+    title: r.title,
+    type: r.type,
+    description: r.description,
+    url: r.url,
+  }));
+
+  const scenarios: ScenarioData[] = json.scenarios
+    .map((s) => transformScenario(s, { externalPersonas: personas, externalResources: resources }))
+    .filter((s): s is ScenarioData => s !== null);
+
+  return {
+    id: json.id,
+    title: json.title,
+    description: json.description,
+    personas,
+    resources,
+    scenarios,
   };
 }
