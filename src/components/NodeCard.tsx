@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer, StepEvaluation, ScenarioPath } from "@/types/scenario";
+import { stepEvaluationHasContent } from "@/data/evaluationCompetencies";
 import { MessageSquare, Radio, FileText, Video, User, Zap, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, ChevronDown, Timer, Clock } from "lucide-react";
 import type { OutcomeType } from "@/types/scenario";
 import type { DisplayMode } from "@/pages/Index";
@@ -90,6 +91,7 @@ interface ScenarioCardProps {
   displayMode: DisplayMode;
   selectedStepId?: string | null;
   onSelectStep?: (stepId: string | null) => void;
+  warningNodeIds?: Set<string>;
 }
 
 interface OutcomeCardProps {
@@ -105,11 +107,13 @@ const StepRow = ({
   index,
   isSelected,
   onSelectStep,
+  hasWarning,
 }: {
   step: ScenarioStep;
   index: number;
   isSelected?: boolean;
   onSelectStep?: (stepId: string | null) => void;
+  hasWarning?: boolean;
 }) => {
   const cfg = typeConfig[step.type];
   const Icon = cfg.icon;
@@ -128,13 +132,24 @@ const StepRow = ({
           }
         }}
       >
-        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-1">
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-              style={{ background: `hsl(var(--node-${step.type}))`, color: "white" }}
-            >
-              {index + 1}
+            <div className="relative shrink-0">
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+                style={{ background: `hsl(var(--node-${step.type}))`, color: "white" }}
+              >
+                {index + 1}
+              </div>
+              {hasWarning && (
+                <div
+                  className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center"
+                  style={{ background: "hsl(38, 92%, 50%)", boxShadow: "0 0 0 1.5px white" }}
+                  title="Validation warning: this step has a configuration issue"
+                >
+                  <AlertTriangle className="w-2 h-2 text-white" />
+                </div>
+              )}
             </div>
             <div className="flex-1">
               <h4 className="font-semibold text-xs text-card-foreground leading-tight">
@@ -303,47 +318,24 @@ function formatTimeoutMs(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-const weightConfig: Record<
-  "high" | "medium" | "low",
-  { label: string; color: string; bg: string; border: string }
-> = {
-  high:   { label: "High",   color: "hsl(340, 62%, 46%)", bg: "hsl(340, 62%, 96%)", border: "hsl(340, 62%, 82%)" },
-  medium: { label: "Medium", color: "hsl(340, 28%, 52%)", bg: "hsl(340, 28%, 96%)", border: "hsl(340, 28%, 84%)" },
-  low:    { label: "Low",    color: "hsl(220, 10%, 55%)", bg: "hsl(220, 10%, 95%)", border: "hsl(220, 10%, 82%)" },
-};
-
 const EvaluationSection = ({ evaluation }: { evaluation: StepEvaluation }) => {
-  const w = weightConfig[evaluation.weight];
   return (
     <div
-      className="px-3 pb-2 pt-1.5 space-y-1.5"
-      style={{ borderTop: "1px solid hsl(var(--border))" }}
+      className="px-3 pb-2 pt-1.5 space-y-1 text-muted-foreground/80"
+      style={{ borderTop: "1px solid hsl(var(--border) / 0.7)" }}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: "hsl(340, 40%, 55%)" }}>
-          Evaluation
-        </span>
-        <span
-          className="text-[7px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full shrink-0"
-          style={{ color: w.color, background: w.bg, border: `1px solid ${w.border}` }}
-        >
-          {w.label} weight
-        </span>
-      </div>
-      <div
-        className="text-[8px] font-medium px-1.5 py-0.5 rounded w-fit"
-        style={{ color: "hsl(340, 40%, 46%)", background: "hsl(340, 30%, 97%)", border: "1px solid hsl(340, 30%, 90%)" }}
-      >
-        {evaluation.competency}
-      </div>
-      <div className="space-y-0.5">
-        <span className="text-[7px] font-bold uppercase tracking-wider" style={{ color: "hsl(340, 40%, 55%)" }}>
-          Requirement
-        </span>
-        <p className="text-[9px] leading-snug italic" style={{ color: "hsl(var(--muted-foreground))" }}>
-          {evaluation.requirement}
-        </p>
-      </div>
+      <span className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/50">
+        Evaluation
+      </span>
+      {evaluation.competency ? (
+        <div className="text-[8px] font-medium text-card-foreground/85">{evaluation.competency}</div>
+      ) : null}
+      {evaluation.expectedBehavior?.trim() ? (
+        <p className="text-[9px] leading-snug line-clamp-3">{evaluation.expectedBehavior}</p>
+      ) : null}
+      {evaluation.notes?.trim() ? (
+        <p className="text-[8px] leading-snug italic text-muted-foreground/70 line-clamp-2">{evaluation.notes}</p>
+      ) : null}
     </div>
   );
 };
@@ -360,6 +352,9 @@ interface ModalStepCardProps {
   isSelected: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
   spotlight?: StepSpotlight;
+  hasWarning?: boolean;
+  /** Preview walkthrough: match emerald accent on bottom dock */
+  walkthroughActive?: boolean;
 }
 
 export const ModalStepCard = ({
@@ -369,13 +364,18 @@ export const ModalStepCard = ({
   isSelected,
   onMouseDown,
   spotlight,
+  hasWarning,
+  walkthroughActive,
 }: ModalStepCardProps) => {
   const cfg = typeConfig[step.type];
   const Icon = cfg.icon;
   const isDimmed = spotlight?.dimmed ?? false;
-  const borderColor = isSelected
-    ? "ring-2 ring-primary"
-    : "hover:ring-1 hover:ring-primary/40";
+  const borderColor =
+    isSelected && walkthroughActive
+      ? "ring-2 ring-emerald-500 shadow-[0_0_22px_rgba(16,185,129,0.22)]"
+      : isSelected
+        ? "ring-2 ring-primary"
+        : "hover:ring-1 hover:ring-primary/40";
 
   return (
     <div
@@ -403,11 +403,22 @@ export const ModalStepCard = ({
           borderBottom: `1px solid hsl(var(--node-${step.type}) / 0.15)`,
         }}
       >
-        <div
-          className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
-          style={{ background: `hsl(var(--node-${step.type}))`, color: "white" }}
-        >
-          {stepIndex + 1}
+        <div className="relative shrink-0">
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
+            style={{ background: `hsl(var(--node-${step.type}))`, color: "white" }}
+          >
+            {stepIndex + 1}
+          </div>
+          {hasWarning && (
+            <div
+              className="absolute -top-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center"
+              style={{ background: "hsl(38, 92%, 50%)", boxShadow: "0 0 0 1.5px white" }}
+              title="Validation warning: this step has a configuration issue"
+            >
+              <AlertTriangle className="w-1.5 h-1.5 text-white" />
+            </div>
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-[11px] text-card-foreground leading-tight">
@@ -562,7 +573,9 @@ export const ModalStepCard = ({
         </div>
       )}
 
-      {step.evaluation && <EvaluationSection evaluation={step.evaluation} />}
+      {stepEvaluationHasContent(step.evaluation) && step.evaluation && (
+        <EvaluationSection evaluation={step.evaluation} />
+      )}
     </div>
   );
 };
@@ -667,7 +680,7 @@ export const GlobalTimerCard = ({
   );
 };
 
-export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMode, selectedStepId, onSelectStep }: ScenarioCardProps) => {
+export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMode, selectedStepId, onSelectStep, warningNodeIds }: ScenarioCardProps) => {
   const borderColor = isSelected
     ? "ring-2 ring-primary"
     : "hover:ring-1 hover:ring-primary/40";
@@ -702,6 +715,7 @@ export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMo
                 index={index}
                 isSelected={selectedStepId === step.id}
                 onSelectStep={onSelectStep}
+                hasWarning={warningNodeIds?.has(step.id)}
               />
               {index < (node.steps?.length || 0) - 1 && (
                 <div className="flex justify-center py-2">

@@ -4,12 +4,19 @@ import { ScenarioCard, OutcomeCard, ModalStepCard, GlobalTimerCard } from "./Nod
 import FlowConnections from "./FlowConnections";
 import ModalFlowConnections from "./ModalFlowConnections";
 import type { DisplayMode } from "@/pages/Index";
+import type { ValidationWarning } from "@/utils/scenarioValidation";
+import { stepEvaluationHasContent } from "@/data/evaluationCompetencies";
 
 interface NodeCanvasProps {
   scenario: ScenarioData;
   displayMode: DisplayMode;
   selectedStepId?: string | null;
   onSelectStep?: (stepId: string | null) => void;
+  validationWarnings?: ValidationWarning[];
+  /** Preview walkthrough: emphasize only direct outgoing edges from the active step */
+  walkthroughMode?: boolean;
+  /** Pixels reserved at bottom for walkthrough dock (used to center the active node) */
+  walkthroughBottomInset?: number;
 }
 
 type DraggableNode = ScenarioNode | OutcomeNode;
@@ -27,7 +34,8 @@ const MODAL_LEFT = 60;
 const GLOBAL_TIMER_W = 220;
 const GLOBAL_TIMER_H = 80;
 const GLOBAL_TIMER_GAP = 30;
-const PANEL_WIDTH = 420;
+/** Step inspector is an overlay — no horizontal gutter. */
+const INSPECTOR_GUTTER_PX = 0;
 
 /** Dynamic card-height estimate based on actual content counts. */
 function estimateStepCardHeight(step: ScenarioStep): number {
@@ -38,7 +46,7 @@ function estimateStepCardHeight(step: ScenarioStep): number {
     52 +                                    // description (~3 lines)
     (taskCount > 0 ? 24 + taskCount * 36 : 0) +  // tasks section
     (pathCount > 0 ? 24 + pathCount * 32 : 0) +  // paths section
-    (step.evaluation ? 72 : 0) +           // evaluation block
+    (stepEvaluationHasContent(step.evaluation) ? 80 : 0) +
     16                                      // bottom padding
   );
 }
@@ -218,6 +226,67 @@ function computeModalPositions(
 }
 
 // ─────────────────────────────────────────────────────────
+// Forward BFS: from a selected step, find all edges + steps
+// on every forward path to any outcome.
+// ─────────────────────────────────────────────────────────
+
+function computeForwardPaths(
+  stepId: string,
+  steps: ScenarioStep[],
+): { reachableStepIds: Set<string>; reachableEdgeKeys: Set<string> } {
+  const stepMap = new Map(steps.map((s) => [s.id, s]));
+  const reachableStepIds = new Set<string>();
+  const reachableEdgeKeys = new Set<string>();
+
+  // BFS queue contains { id, pathIndex } pairs representing edges to visit
+  const queue: Array<{ stepId: string; pathIndex: number; edgeKey: string }> = [];
+
+  // Seed with all outgoing edges from the selected step
+  const startStep = stepMap.get(stepId);
+  if (!startStep) return { reachableStepIds, reachableEdgeKeys };
+
+  reachableStepIds.add(stepId);
+  for (let i = 0; i < (startStep.paths?.length ?? 0); i++) {
+    queue.push({ stepId, pathIndex: i, edgeKey: `${stepId}-${i}` });
+  }
+
+  const visitedEdges = new Set<string>();
+
+  while (queue.length > 0) {
+    const item = queue.shift()!;
+    if (visitedEdges.has(item.edgeKey)) continue;
+    visitedEdges.add(item.edgeKey);
+
+    const step = stepMap.get(item.stepId);
+    if (!step) continue;
+
+    const path = step.paths?.[item.pathIndex];
+    if (!path) continue;
+
+    reachableEdgeKeys.add(item.edgeKey);
+
+    // If path leads to an outcome node — stop traversal for this branch
+    if (path.connections && path.connections.length > 0) continue;
+
+    // If path leads to another step — continue BFS from that step
+    if (path.targetStepId) {
+      const nextStep = stepMap.get(path.targetStepId);
+      if (nextStep && !reachableStepIds.has(path.targetStepId)) {
+        reachableStepIds.add(path.targetStepId);
+        for (let i = 0; i < (nextStep.paths?.length ?? 0); i++) {
+          const nextEdgeKey = `${path.targetStepId}-${i}`;
+          if (!visitedEdges.has(nextEdgeKey)) {
+            queue.push({ stepId: path.targetStepId, pathIndex: i, edgeKey: nextEdgeKey });
+          }
+        }
+      }
+    }
+  }
+
+  return { reachableStepIds, reachableEdgeKeys };
+}
+
+// ─────────────────────────────────────────────────────────
 // Spotlight: backward BFS to find all steps + edges on any
 // path to the selected outcome.
 // ─────────────────────────────────────────────────────────
@@ -270,7 +339,25 @@ const outcomeColor: Record<string, string> = {
 
 // ─────────────────────────────────────────────────────────
 
-const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: NodeCanvasProps) => {
+function directOutgoingEdgeKeys(stepId: string, steps: ScenarioStep[]): Set<string> {
+  const keys = new Set<string>();
+  const step = steps.find((s) => s.id === stepId);
+  if (!step) return keys;
+  for (let i = 0; i < (step.paths?.length ?? 0); i++) {
+    keys.add(`${stepId}-${i}`);
+  }
+  return keys;
+}
+
+const NodeCanvas = ({
+  scenario,
+  displayMode,
+  selectedStepId,
+  onSelectStep,
+  validationWarnings,
+  walkthroughMode = false,
+  walkthroughBottomInset = 0,
+}: NodeCanvasProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -336,6 +423,27 @@ const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: Nod
     };
   }, [spotlightOutcomeId, steps]);
 
+  // Forward-path highlight: edges/steps reachable FROM the selected step (edit mode)
+  const forwardPathData = useMemo(() => {
+    if (!selectedStepId || displayMode !== "modal" || walkthroughMode) return null;
+    return computeForwardPaths(selectedStepId, steps);
+  }, [selectedStepId, steps, displayMode, walkthroughMode]);
+
+  /** Walkthrough: only edges leaving the current step (causal clarity). */
+  const walkthroughEdgeKeys = useMemo(() => {
+    if (!walkthroughMode || !selectedStepId || displayMode !== "modal") return null;
+    return directOutgoingEdgeKeys(selectedStepId, steps);
+  }, [walkthroughMode, selectedStepId, displayMode, steps]);
+
+  const modalSpotlightEdgeKeys =
+    spotlightData?.reachableEdgeKeys ?? walkthroughEdgeKeys ?? forwardPathData?.reachableEdgeKeys;
+
+  // Warning node IDs for badge display on step cards
+  const warningNodeIds = useMemo(() => {
+    if (!validationWarnings) return undefined;
+    return new Set(validationWarnings.map((w) => w.nodeId));
+  }, [validationWarnings]);
+
   // ─── Clear local ring when panel is closed externally ───
   useEffect(() => {
     if (selectedStepId === null) {
@@ -343,25 +451,35 @@ const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: Nod
     }
   }, [selectedStepId]);
 
-  // ─── Auto-pan in modal mode so selected step isn't behind the panel ───
+  // ─── Auto-pan in modal: walkthrough centers node above dock; edit mode keeps node in view ───
   useEffect(() => {
     if (!selectedStepId || displayMode !== "modal") return;
     const pos = modalPositions.get(selectedStepId);
-    if (!pos) return;
+    if (!pos || !containerRef.current) return;
 
+    const step = steps.find((s) => s.id === selectedStepId);
+    const cardH = step ? estimateStepCardHeight(step) : MODAL_OUTCOME_H;
+    const rect = containerRef.current.getBoundingClientRect();
+    const z = zoomRef.current;
     const currentPan = panRef.current;
-    const currentZoom = zoomRef.current;
 
-    const nodeScreenRight = pos.x * currentZoom + currentPan.x + MODAL_STEP_W * currentZoom;
-    const availableWidth = window.innerWidth - PANEL_WIDTH - 20;
+    if (walkthroughMode && walkthroughBottomInset > 0) {
+      const visibleW = rect.width;
+      const visibleH = Math.max(160, rect.height - walkthroughBottomInset);
+      const cx = pos.x + MODAL_STEP_W / 2;
+      const cy = pos.y + cardH / 2;
+      setPan({ x: visibleW / 2 - cx * z, y: visibleH / 2 - cy * z });
+      return;
+    }
 
+    const nodeScreenRight = pos.x * z + currentPan.x + MODAL_STEP_W * z;
+    const availableWidth = rect.width - INSPECTOR_GUTTER_PX - 20;
     if (nodeScreenRight > availableWidth) {
       const shift = nodeScreenRight - availableWidth;
       setPan({ ...currentPan, x: currentPan.x - shift });
     }
-    // Only react to selection changes — intentional eslint suppress
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStepId, displayMode]);
+  }, [selectedStepId, displayMode, walkthroughMode, walkthroughBottomInset, modalPositions, steps]);
 
   // ─── Pan ───
   const handleCanvasMouseDown = useCallback(
@@ -521,7 +639,7 @@ const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: Nod
   return (
     <div
       ref={containerRef}
-      className="w-full h-screen overflow-hidden bg-background select-none"
+      className="w-full h-full overflow-hidden bg-background select-none"
       style={{ cursor: draggingNodeId ? "grabbing" : isPanning ? "grabbing" : "grab" }}
       onMouseDown={handleCanvasMouseDown}
       onMouseMove={handleMouseMove}
@@ -604,7 +722,7 @@ const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: Nod
             <ModalFlowConnections
               steps={steps}
               outcomeNodes={modalOutcomeNodes}
-              spotlightEdgeKeys={spotlightData?.reachableEdgeKeys}
+              spotlightEdgeKeys={modalSpotlightEdgeKeys}
               globalTimers={globalTimers}
             />
 
@@ -635,6 +753,8 @@ const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: Nod
                   isSelected={isStepSelected}
                   onMouseDown={(e) => handleModalNodeMouseDown(step.id, e)}
                   spotlight={stepSpotlight}
+                  hasWarning={warningNodeIds?.has(step.id)}
+                  walkthroughActive={walkthroughMode && selectedStepId === step.id}
                 />
               );
             })}
@@ -674,7 +794,15 @@ const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: Nod
           </>
         ) : (
           <>
-            <FlowConnections scenarioNode={scenarioNode} outcomeNodes={outcomeNodes} />
+            <FlowConnections
+              scenarioNode={scenarioNode}
+              outcomeNodes={outcomeNodes}
+              selectedStepIndex={
+                selectedStepId != null
+                  ? (scenario.scenarioNode.steps?.findIndex((s) => s.id === selectedStepId) ?? null)
+                  : null
+              }
+            />
 
             <ScenarioCard
               node={scenarioNode}
@@ -684,6 +812,7 @@ const NodeCanvas = ({ scenario, displayMode, selectedStepId, onSelectStep }: Nod
               displayMode={displayMode}
               selectedStepId={selectedStepId}
               onSelectStep={onSelectStep}
+              warningNodeIds={warningNodeIds}
             />
 
             {outcomeNodes.map((node) => (

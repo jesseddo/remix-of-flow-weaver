@@ -1,35 +1,46 @@
 import { PrerequisiteCondition, ScenarioTask } from "@/types/scenario";
+import { resolveTaskAuthoringLine } from "@/utils/taskDisplay";
 
 interface PrerequisiteDisplayProps {
   prerequisite: PrerequisiteCondition | undefined;
   tasks: ScenarioTask[];
 }
 
-function resolveLabel(taskId: string, tasks: ScenarioTask[]): string {
-  return tasks.find((t) => t.id === taskId)?.label ?? taskId;
+function chipLabel(taskId: string, taskList: ScenarioTask[]): string {
+  return resolveTaskAuthoringLine(taskId, taskList);
 }
 
-const TaskChip = ({ label }: { label: string }) => (
+function fullTaskLabel(taskId: string, taskList: ScenarioTask[]): string {
+  return taskList.find((t) => t.id === taskId)?.label ?? taskId;
+}
+
+const TaskChip = ({ label, title }: { label: string; title?: string }) => (
   <span
     className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-secondary-foreground border border-border/60 max-w-[180px] truncate"
-    title={label}
+    title={title ?? label}
   >
     {label}
   </span>
 );
 
-const logicColors: Record<string, string> = {
-  "ALL OF": "hsl(220, 70%, 52%)",
-  "ANY OF": "hsl(160, 60%, 38%)",
-  "NONE OF": "hsl(0, 65%, 48%)",
+const groupLabels: Record<"all" | "none" | "any", string> = {
+  all: "Must:",
+  none: "Must not:",
+  any: "At least one of:",
 };
 
-const LogicLabel = ({ label }: { label: string }) => (
+const logicColors: Record<"all" | "none" | "any", string> = {
+  all: "hsl(220, 70%, 52%)",
+  any: "hsl(160, 60%, 38%)",
+  none: "hsl(0, 65%, 48%)",
+};
+
+const LogicLabel = ({ groupKey }: { groupKey: keyof typeof groupLabels }) => (
   <span
-    className="text-[8px] font-bold uppercase tracking-wider shrink-0 whitespace-nowrap"
-    style={{ color: logicColors[label] ?? "hsl(220, 15%, 55%)" }}
+    className="text-[8px] font-semibold shrink-0 whitespace-nowrap max-w-[118px] leading-tight"
+    style={{ color: logicColors[groupKey] }}
   >
-    {label}
+    {groupLabels[groupKey]}
   </span>
 );
 
@@ -46,14 +57,19 @@ export const PrerequisiteDisplay = ({
   }
 
   if (typeof prerequisite === "string") {
-    return <TaskChip label={resolveLabel(prerequisite, tasks)} />;
+    return (
+      <TaskChip
+        label={chipLabel(prerequisite, tasks)}
+        title={fullTaskLabel(prerequisite, tasks)}
+      />
+    );
   }
 
   const { all, none, any } = prerequisite;
-  const groups: Array<{ key: string; label: string; ids: string[] }> = [];
-  if (all?.length) groups.push({ key: "all", label: "ALL OF", ids: all });
-  if (none?.length) groups.push({ key: "none", label: "NONE OF", ids: none });
-  if (any?.length) groups.push({ key: "any", label: "ANY OF", ids: any });
+  const groups: Array<{ key: "all" | "none" | "any"; ids: string[] }> = [];
+  if (all?.length) groups.push({ key: "all", ids: all });
+  if (none?.length) groups.push({ key: "none", ids: none });
+  if (any?.length) groups.push({ key: "any", ids: any });
 
   if (groups.length === 0) {
     return (
@@ -65,12 +81,16 @@ export const PrerequisiteDisplay = ({
 
   return (
     <div className="space-y-1.5">
-      {groups.map(({ key, label, ids }) => (
+      {groups.map(({ key, ids }) => (
         <div key={key} className="flex items-start gap-1.5 flex-wrap">
-          <LogicLabel label={label} />
+          <LogicLabel groupKey={key} />
           <div className="flex items-center gap-1 flex-wrap">
             {ids.map((id) => (
-              <TaskChip key={id} label={resolveLabel(id, tasks)} />
+              <TaskChip
+                key={id}
+                label={chipLabel(id, tasks)}
+                title={fullTaskLabel(id, tasks)}
+              />
             ))}
           </div>
         </div>

@@ -1,5 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
-import { ScenarioData, ScenarioTask, ScenarioPath, PrerequisiteCondition, OutcomeType, StepConnection, Persona, ScenarioResource } from "@/types/scenario";
+import {
+  ScenarioData,
+  ScenarioTask,
+  ScenarioPath,
+  PrerequisiteCondition,
+  OutcomeType,
+  StepConnection,
+  Persona,
+  ScenarioResource,
+  NodeType,
+  StepEvaluation,
+  EvaluationCompetency,
+} from "@/types/scenario";
+import { stepEvaluationHasContent } from "@/data/evaluationCompetencies";
 import { transformScenario, JsonScenario } from "@/data/transformScenario";
 import { exportToJsonFile } from "@/utils/exportToJson";
 
@@ -24,13 +37,17 @@ export interface UpdateStepPatch {
   title?: string;
   description?: string;
   resource?: string;
+  type?: NodeType;
 }
 
 export interface UpdateEvaluationPatch {
-  competency?: string;
-  competencyId?: string;
-  weight?: "high" | "medium" | "low";
-  requirement?: string;
+  expectedBehavior?: string;
+  competency?: EvaluationCompetency | "";
+  notes?: string;
+}
+
+function emptyStepEvaluation(): StepEvaluation {
+  return { expectedBehavior: "", competency: "", notes: undefined };
 }
 
 export type PathTarget =
@@ -213,6 +230,39 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
     [markDirty]
   );
 
+  /** One atomic update: append task + set path prerequisite (avoids two setData calls racing). */
+  const addPathConditionTask = useCallback(
+    (
+      stepId: string,
+      pathId: string,
+      task: ScenarioTask,
+      prerequisite: PrerequisiteCondition,
+    ) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          scenarioNode: {
+            ...prev.scenarioNode,
+            steps: (prev.scenarioNode.steps ?? []).map((step) => {
+              if (step.id !== stepId) return step;
+              const paths = step.paths ?? [];
+              return {
+                ...step,
+                tasks: [...(step.tasks ?? []), task],
+                paths: paths.map((path) =>
+                  path.id === pathId ? { ...path, prerequisite } : path
+                ),
+              };
+            }),
+          },
+        };
+      });
+      markDirty();
+    },
+    [markDirty]
+  );
+
   const deleteTask = useCallback(
     (stepId: string, taskId: string) => {
       setData((prev) => {
@@ -282,8 +332,20 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
             ...prev.scenarioNode,
             steps: prev.scenarioNode.steps?.map((step) => {
               if (step.id !== stepId) return step;
-              const current = step.evaluation ?? { competency: "", weight: "high" as const, requirement: "" };
-              return { ...step, evaluation: { ...current, ...patch } };
+              const current = step.evaluation ?? emptyStepEvaluation();
+              const next: StepEvaluation = {
+                ...current,
+                ...patch,
+              };
+              if (patch.notes !== undefined) {
+                const t = patch.notes.trim();
+                next.notes = t.length > 0 ? t : undefined;
+              }
+              if (!stepEvaluationHasContent(next)) {
+                const { evaluation: _e, ...rest } = step;
+                return rest;
+              }
+              return { ...step, evaluation: next };
             }),
           },
         };
@@ -307,27 +369,6 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
               const { evaluation: _ev, ...rest } = step;
               return rest;
             }),
-          },
-        };
-      });
-      markDirty();
-    },
-    [markDirty]
-  );
-
-  const addEvaluation = useCallback(
-    (stepId: string) => {
-      setData((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          scenarioNode: {
-            ...prev.scenarioNode,
-            steps: prev.scenarioNode.steps?.map((step) =>
-              step.id === stepId
-                ? { ...step, evaluation: { competency: "", weight: "high" as const, requirement: "" } }
-                : step
-            ),
           },
         };
       });
@@ -429,12 +470,12 @@ export function useScenarioEditor(originalJson: JsonScenario | null) {
     setPathTarget,
     updateTask,
     addTask,
+    addPathConditionTask,
     deleteTask,
     updatePersona,
     updateStep,
     updateEvaluation,
     clearEvaluation,
-    addEvaluation,
     addPersonaToCatalog,
     updatePersonaCatalog,
     deletePersonaFromCatalog,

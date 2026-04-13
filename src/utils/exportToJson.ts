@@ -1,5 +1,6 @@
 import { ScenarioData } from "@/types/scenario";
 import { JsonScenario } from "@/data/transformScenario";
+import { stepEvaluationHasContent } from "@/data/evaluationCompetencies";
 
 /**
  * Patches the full task and path arrays from the edited ScenarioData back into
@@ -22,16 +23,19 @@ export function exportToJson(
     if (step.persona !== undefined) scene.persona = step.persona;
     if (step.personaAdherence !== undefined) scene.personaAdherence = step.personaAdherence;
     if (step.resource !== undefined) scene.resource = step.resource;
-    // Sync evaluation — undefined means untouched; explicit value (or removal) is honoured
     if ("evaluation" in step) {
-      scene.evaluation = step.evaluation
-        ? {
-            competency: step.evaluation.competency,
-            ...(step.evaluation.competencyId ? { competencyId: step.evaluation.competencyId } : {}),
-            weight: step.evaluation.weight,
-            requirement: step.evaluation.requirement,
-          }
-        : undefined;
+      const ev = step.evaluation;
+      scene.evaluation =
+        ev && stepEvaluationHasContent(ev)
+          ? {
+              ...(ev.expectedBehavior.trim() ? { expectedBehavior: ev.expectedBehavior } : {}),
+              ...(ev.competency ? { competency: ev.competency } : {}),
+              ...(ev.notes?.trim() ? { notes: ev.notes.trim() } : {}),
+            }
+          : undefined;
+      if (scene.evaluation && Object.keys(scene.evaluation).length === 0) {
+        scene.evaluation = undefined;
+      }
     }
 
     // Full task sync — handles add, delete, reorder, and field edits
@@ -39,6 +43,7 @@ export function exportToJson(
       scene.tasks = step.tasks.map((task) => ({
         id: task.id,
         label: task.label,
+        ...(task.shortLabel?.trim() ? { shortLabel: task.shortLabel.trim() } : {}),
         required: task.required,
         ...(task.hidden !== undefined ? { hidden: task.hidden } : {}),
         ...(task.type ? { type: task.type } : {}),

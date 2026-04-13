@@ -4,6 +4,7 @@ import { ScenarioNode, OutcomeNode } from "@/types/scenario";
 interface FlowConnectionsProps {
   scenarioNode: ScenarioNode;
   outcomeNodes: OutcomeNode[];
+  selectedStepIndex?: number | null;
 }
 
 const SCENARIO_W = 500;
@@ -50,6 +51,7 @@ interface Line {
   type: ConnectionType;
   labelT: number;
   ctrlXOffset: number;
+  sourceStepIndex: number;
 }
 
 const linesMatch = (a: Line[], b: Line[]): boolean => {
@@ -66,6 +68,7 @@ const linesMatch = (a: Line[], b: Line[]): boolean => {
 const FlowConnections = ({
   scenarioNode,
   outcomeNodes,
+  selectedStepIndex,
 }: FlowConnectionsProps) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [lines, setLines] = useState<Line[]>([]);
@@ -117,6 +120,7 @@ const FlowConnections = ({
             type: connection.type,
             labelT: 0.5,
             ctrlXOffset: 0,
+            sourceStepIndex: stepIndex,
           });
         });
       });
@@ -207,8 +211,12 @@ const FlowConnections = ({
         const labelY = cubicBezier(t, line.dotY, line.dotY, line.y2, line.y2);
         const labelWidth = Math.max(180, line.label.length * 5);
 
+        const isHighlighted =
+          selectedStepIndex == null || line.sourceStepIndex === selectedStepIndex;
+        const edgeOpacity = isHighlighted ? 1 : 0.08;
+
         return (
-          <g key={i}>
+          <g key={i} style={{ opacity: edgeOpacity, transition: "opacity 0.2s" }}>
             <circle
               cx={line.dotX}
               cy={line.dotY}

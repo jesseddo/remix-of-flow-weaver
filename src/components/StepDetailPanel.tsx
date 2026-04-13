@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, type MouseEvent } from "react";
 import {
   ScenarioStep, ScenarioTask, ScenarioPath, OutcomeNode, PrerequisiteCondition, Persona, ScenarioResource,
 } from "@/types/scenario";
@@ -7,11 +7,20 @@ import {
 } from "@/hooks/useScenarioEditor";
 import { PrerequisiteEditor } from "./PrerequisiteEditor";
 import { PrerequisiteDisplay } from "./PrerequisiteDisplay";
-import { COMPETENCY_RUBRIC } from "@/data/competencyRubric";
+import { EVALUATION_COMPETENCIES } from "@/data/evaluationCompetencies";
 import {
-  MessageSquare, Radio, FileText, Video, X, User,
+  formatAuthoringConsequenceLine,
+  formatConditionBullets,
+  getOutcomeChunk,
+  getPathBranchTone,
+  getPathDestination,
+  type BranchTone,
+} from "@/utils/pathCausality";
+import { cn } from "@/lib/utils";
+import {
+  MessageSquare, Radio, FileText, Video, X,
   ChevronRight, AlertTriangle, CheckCircle2, XCircle,
-  Plus, Trash2,
+  Plus, Trash2, Pencil,
 } from "lucide-react";
 import type { OutcomeType } from "@/types/scenario";
 
@@ -28,13 +37,18 @@ interface StepDetailPanelProps {
   onDeletePath: (stepId: string, pathId: string) => void;
   onUpdateTask: (stepId: string, taskId: string, patch: UpdateTaskPatch) => void;
   onAddTask: (stepId: string, task: ScenarioTask) => void;
+  onAddPathCondition: (
+    stepId: string,
+    pathId: string,
+    task: ScenarioTask,
+    prerequisite: PrerequisiteCondition,
+  ) => void;
   onDeleteTask: (stepId: string, taskId: string) => void;
   onUpdatePersona: (stepId: string, patch: UpdatePersonaPatch) => void;
   onUpdateStep: (stepId: string, patch: UpdateStepPatch) => void;
   onSetPathTarget: (stepId: string, pathId: string, target: PathTarget) => void;
   onUpdateEvaluation: (stepId: string, patch: UpdateEvaluationPatch) => void;
   onClearEvaluation: (stepId: string) => void;
-  onAddEvaluation: (stepId: string) => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -161,11 +175,23 @@ const InlineInput = ({
 
 // ── Collapsible prereq row ────────────────────────────────────────
 const PrereqSection = ({
-  prereq, tasks, onChange,
+  prereq,
+  tasks,
+  onChange,
+  stepId,
+  stepIndex,
+  onAddTask,
+  onUpdateTask,
+  excludeTaskIds,
 }: {
   prereq: PrerequisiteCondition | undefined;
   tasks: ScenarioTask[];
   onChange: (updated: PrerequisiteCondition | undefined) => void;
+  stepId?: string;
+  stepIndex?: number;
+  onAddTask?: (stepId: string, task: ScenarioTask) => void;
+  onUpdateTask?: (stepId: string, taskId: string, patch: UpdateTaskPatch) => void;
+  excludeTaskIds?: string[];
 }) => {
   const hasPrereq = checkHasPrereq(prereq);
   const [open, setOpen] = useState(hasPrereq);
@@ -186,9 +212,15 @@ const PrereqSection = ({
       </div>
       {open ? (
         <PrerequisiteEditor
+          variant="task"
           prerequisite={prereq}
           tasks={tasks as ScenarioTask[]}
           onChange={onChange}
+          stepId={stepId}
+          stepIndex={stepIndex}
+          onAddTask={onAddTask}
+          onUpdateTask={onUpdateTask}
+          excludeTaskIds={excludeTaskIds}
         />
       ) : hasPrereq ? (
         <PrerequisiteDisplay prerequisite={prereq!} tasks={tasks as ScenarioTask[]} />
@@ -201,12 +233,22 @@ const PrereqSection = ({
 
 // ── Task row ─────────────────────────────────────────────────────
 const TaskRow = ({
-  task, stepId, allTasks, onUpdateTask, onDeleteTask, autoFocus, onAutoFocusDone,
+  task,
+  stepId,
+  stepIndex,
+  allTasks,
+  onUpdateTask,
+  onAddTask,
+  onDeleteTask,
+  autoFocus,
+  onAutoFocusDone,
 }: {
   task: ScenarioTask;
   stepId: string;
+  stepIndex: number;
   allTasks: ScenarioTask[];
   onUpdateTask: (stepId: string, taskId: string, patch: UpdateTaskPatch) => void;
+  onAddTask: (stepId: string, task: ScenarioTask) => void;
   onDeleteTask: (stepId: string, taskId: string) => void;
   autoFocus?: boolean;
   onAutoFocusDone?: () => void;
@@ -264,26 +306,103 @@ const TaskRow = ({
       prereq={task.prerequisite}
       tasks={allTasks.filter((t) => t.id !== task.id)}
       onChange={(updated) => onUpdateTask(stepId, task.id, { prerequisite: updated })}
+      stepId={stepId}
+      stepIndex={stepIndex}
+      onAddTask={onAddTask}
+      onUpdateTask={onUpdateTask}
+      excludeTaskIds={[task.id]}
     />
   </div>
 );
 
-// ── Path row ─────────────────────────────────────────────────────
+const BRANCH_TONE_UI: Record<
+  BranchTone,
+  {
+    border: string;
+    bar: string;
+    bg: string;
+    head: string;
+    badge: string;
+    Icon: typeof CheckCircle2;
+    /** Sketch-style header label (lowercase). */
+    badgeText: string;
+  }
+> = {
+  safe: {
+    border: "border-emerald-600/55",
+    bar: "border-l-emerald-600",
+    bg: "bg-emerald-50/95 dark:bg-emerald-950/40",
+    head: "bg-emerald-600/18 dark:bg-emerald-600/28",
+    badge: "text-emerald-900 dark:text-emerald-100",
+    Icon: CheckCircle2,
+    badgeText: "continue",
+  },
+  risk: {
+    border: "border-red-600/55",
+    bar: "border-l-red-600",
+    bg: "bg-red-50/95 dark:bg-red-950/40",
+    head: "bg-red-600/18 dark:bg-red-600/26",
+    badge: "text-red-900 dark:text-red-100",
+    Icon: XCircle,
+    badgeText: "unsafe",
+  },
+  caution: {
+    border: "border-amber-500/55",
+    bar: "border-l-amber-500",
+    bg: "bg-amber-50/90 dark:bg-amber-950/35",
+    head: "bg-amber-500/18 dark:bg-amber-600/24",
+    badge: "text-amber-950 dark:text-amber-100",
+    Icon: AlertTriangle,
+    badgeText: "caution",
+  },
+  neutral: {
+    border: "border-slate-400/50 dark:border-slate-500/50",
+    bar: "border-l-slate-500 dark:border-l-slate-400",
+    bg: "bg-slate-50/90 dark:bg-slate-900/55",
+    head: "bg-slate-500/12 dark:bg-slate-600/22",
+    badge: "text-slate-800 dark:text-slate-100",
+    Icon: ChevronRight,
+    badgeText: "continue",
+  },
+};
+
+// ── Path row (selectable branch card: scan vs edit) ───────────────
 const PathRow = ({
-  path, step, allSteps, outcomeNodes, onUpdatePath, onDeletePath, onSetPathTarget,
+  path,
+  step,
+  stepIndex,
+  allSteps,
+  outcomeNodes,
+  onUpdatePath,
+  onDeletePath,
+  onSetPathTarget,
+  onAddTask,
+  onAddPathCondition,
+  onUpdateTask,
 }: {
   path: ScenarioPath;
   step: ScenarioStep;
+  stepIndex: number;
   allSteps: ScenarioStep[];
   outcomeNodes: OutcomeNode[];
   onUpdatePath: (stepId: string, pathId: string, patch: UpdatePathPatch) => void;
   onDeletePath: (stepId: string, pathId: string) => void;
   onSetPathTarget: (stepId: string, pathId: string, target: PathTarget) => void;
+  onAddTask: (stepId: string, task: ScenarioTask) => void;
+  onAddPathCondition: (
+    stepId: string,
+    pathId: string,
+    task: ScenarioTask,
+    prerequisite: PrerequisiteCondition,
+  ) => void;
+  onUpdateTask: (stepId: string, taskId: string, patch: UpdateTaskPatch) => void;
 }) => {
   const isTimeout = path.timeoutMs !== undefined;
-  const isOutcomeConn = path.connections && path.connections.length > 0;
   const currentTargetId = path.connections?.[0]?.targetNodeId ?? path.targetStepId ?? "";
   const [editingTarget, setEditingTarget] = useState(false);
+  const [cardMode, setCardMode] = useState<"scan" | "edit">(() =>
+    !path.label?.trim() || !currentTargetId ? "edit" : "scan",
+  );
 
   const availableTargets: Array<{ id: string; label: string; group: string }> = [
     ...allSteps
@@ -300,127 +419,208 @@ const PathRow = ({
     })),
   ];
 
-  const targetDisplay = (() => {
-    if (isOutcomeConn) {
-      const conn = path.connections![0];
-      const outcome = outcomeNodes.find((o) => o.id === conn.targetNodeId);
-      if (outcome) return <OutcomeBadge outcome={outcome.outcome} title={outcome.title} />;
-      return <span className="text-[10px] text-muted-foreground">{conn.targetNodeId}</span>;
-    }
-    if (path.targetStepId) {
-      const targetStep = allSteps.find((s) => s.id === path.targetStepId);
-      const targetIdx = allSteps.findIndex((s) => s.id === path.targetStepId);
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-primary">
-          <ChevronRight className="w-3 h-3 shrink-0" />
-          {targetIdx >= 0 ? `Step ${targetIdx + 1}: ` : ""}
-          {targetStep?.title ?? path.targetStepId}
-        </span>
-      );
-    }
-    return <span className="text-[10px] text-muted-foreground/40 italic">No target set</span>;
-  })();
+  const dest = getPathDestination(path, allSteps, outcomeNodes);
+  const outcomeChunk = getOutcomeChunk(dest);
+  const consequenceColor =
+    dest?.kind === "outcome" && dest.outcomeType
+      ? outcomeStyles[dest.outcomeType].color
+      : undefined;
+
+  const toneKey: BranchTone = isTimeout ? "caution" : getPathBranchTone(path);
+  const tone = BRANCH_TONE_UI[toneKey];
+  const ToneIcon = tone.Icon;
+  const conditionBullets = formatConditionBullets(path.prerequisite, step.tasks ?? []);
+
+  const stop = (e: MouseEvent) => e.stopPropagation();
+
+  const scanActivate = () => setCardMode("edit");
 
   return (
     <div
-      className="mx-4 mb-3 rounded-lg overflow-hidden"
-      style={{ border: "1px solid hsl(var(--border))" }}
+      className={cn(
+        "min-w-0 rounded-xl border-2 border-l-[6px] shadow-sm overflow-hidden transition-[box-shadow,ring] flex flex-col",
+        tone.border,
+        tone.bar,
+        tone.bg,
+        cardMode === "edit" && "ring-2 ring-primary/35 ring-offset-2 ring-offset-background",
+      )}
     >
-      {/* Header */}
+      {/* Header — sketch: icon + path type */}
       <div
-        className="px-3 py-2.5 space-y-1.5"
-        style={{
-          background: isTimeout ? "hsl(38, 90%, 97%)" : "hsl(var(--secondary) / 0.4)",
-          borderBottom: "1px solid hsl(var(--border) / 0.6)",
-        }}
+        className={cn(
+          "flex items-center justify-between gap-2 px-3 py-2 border-b border-black/5 dark:border-white/10",
+          tone.head,
+        )}
       >
-        <div className="flex items-start gap-2">
-          {isTimeout ? (
-            <span
-              className="text-[8px] font-bold uppercase tracking-wider shrink-0 px-1.5 py-0.5 rounded-full mt-0.5"
-              style={{ background: "hsl(38, 90%, 92%)", color: "hsl(38, 75%, 38%)", border: "1px solid hsl(38, 75%, 82%)" }}
-            >
-              Timeout
-            </span>
-          ) : (
-            <User className="w-3 h-3 text-primary shrink-0 mt-1" />
-          )}
-          <div className="flex-1 min-w-0 hover:bg-secondary/25 rounded px-1 -mx-1 transition-colors">
-            <InlineInput
-              value={path.label}
-              onChange={(v) => onUpdatePath(step.id, path.id, { label: v })}
-              placeholder="Decision point description…"
-            />
-          </div>
-          <DeleteButton
-            onClick={() => onDeletePath(step.id, path.id)}
-            title="Delete decision point"
-          />
+        <div className="flex items-center gap-2 min-w-0">
+          <ToneIcon className={cn("w-4 h-4 shrink-0", tone.badge)} strokeWidth={2.25} />
+          <span className={cn("text-[12px] font-semibold tracking-tight lowercase", tone.badge)}>
+            {isTimeout ? "timeout" : tone.badgeText}
+          </span>
         </div>
-
-        {/* Target row — read-only display with "Change" affordance */}
-        <div className="flex items-center gap-2 pl-5">
-          {editingTarget ? (
-            <select
-              autoFocus
-              value={currentTargetId}
-              onChange={(e) => {
-                const id = e.target.value;
-                if (!id) return;
-                const outcome = outcomeNodes.find((o) => o.id === id);
-                if (outcome) {
-                  onSetPathTarget(step.id, path.id, {
-                    kind: "outcome",
-                    nodeId: id,
-                    label: outcome.title,
-                    type: outcome.outcome,
-                  });
-                } else {
-                  onSetPathTarget(step.id, path.id, { kind: "step", stepId: id });
-                }
-                setEditingTarget(false);
-              }}
-              onBlur={() => setEditingTarget(false)}
-              className="flex-1 text-[11px] rounded-md border border-border/60 bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+        <div className="flex items-center gap-1.5 shrink-0" onClick={stop}>
+          {cardMode === "edit" && (
+            <button
+              type="button"
+              onClick={() => setCardMode("scan")}
+              className="text-[9px] font-semibold px-2 py-1 rounded-md bg-background/80 border border-border/60 hover:bg-background"
             >
-              <option value="">Select target…</option>
-              <optgroup label="Steps">
-                {availableTargets
-                  .filter((t) => t.group === "Steps")
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>{t.label}</option>
-                  ))}
-              </optgroup>
-              <optgroup label="Outcomes">
-                {availableTargets
-                  .filter((t) => t.group === "Outcomes")
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>{t.label}</option>
-                  ))}
-              </optgroup>
-            </select>
-          ) : (
-            <>
-              {targetDisplay}
-              {!isTimeout && (
-                <button
-                  onClick={() => setEditingTarget(true)}
-                  className="ml-auto text-[9px] text-muted-foreground/40 hover:text-primary transition-colors"
-                >
-                  Change
-                </button>
-              )}
-            </>
+              Done
+            </button>
           )}
+          <DeleteButton onClick={() => onDeletePath(step.id, path.id)} title="Delete branch" />
         </div>
       </div>
 
-      {/* Prerequisite — collapsible */}
-      <PrereqSection
-        prereq={path.prerequisite}
-        tasks={step.tasks ?? []}
-        onChange={(updated) => onUpdatePath(step.id, path.id, { prerequisite: updated ?? "" })}
-      />
+      {cardMode === "scan" ? (
+        <button
+          type="button"
+          onClick={scanActivate}
+          className="w-full text-left p-3 space-y-3 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+        >
+          <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-2 shadow-sm">
+            <div className="text-[11px] font-medium text-muted-foreground mb-1">learner choice:</div>
+            <p className="text-[12px] font-semibold text-foreground leading-snug">
+              {path.label?.trim() || (
+                <span className="text-muted-foreground/50 italic font-normal">Empty — tap to edit</span>
+              )}
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-2 shadow-sm">
+            <div className="text-[11px] font-medium text-muted-foreground mb-1">condition:</div>
+            <ul className="space-y-1">
+              {conditionBullets.map((line, i) => (
+                <li
+                  key={i}
+                  className="text-[11px] text-foreground/90 leading-snug flex gap-1.5"
+                >
+                  <span className="text-muted-foreground shrink-0">→</span>
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-2 shadow-sm">
+            <div className="text-[11px] font-medium text-muted-foreground mb-1">outcome:</div>
+            <div className="space-y-0.5">
+              <p
+                className="text-[12px] font-semibold leading-snug flex gap-1.5"
+                style={consequenceColor ? { color: consequenceColor } : undefined}
+              >
+                <span className="text-muted-foreground shrink-0">→</span>
+                <span>{outcomeChunk.title}</span>
+              </p>
+              {outcomeChunk.severity && (
+                <p className="text-[10px] font-medium pl-5 text-muted-foreground/80">
+                  {outcomeChunk.severity}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 pt-1 text-[9px] text-muted-foreground/55">
+            <Pencil className="w-3 h-3 shrink-0" />
+            <span>Click anywhere on this card to edit</span>
+          </div>
+        </button>
+      ) : (
+        <div className="p-3 space-y-3 bg-muted/15" onClick={stop}>
+          <section className="rounded-lg border border-border/70 bg-card text-card-foreground shadow-sm px-3 py-2.5 space-y-2">
+            <div className="text-[11px] font-medium text-muted-foreground">learner choice:</div>
+            <InlineInput
+              value={path.label}
+              onChange={(v) => onUpdatePath(step.id, path.id, { label: v })}
+              placeholder="What the learner does or decides…"
+              className="text-[12px]"
+            />
+          </section>
+
+          <section className="rounded-lg border border-border/70 bg-card text-card-foreground shadow-sm px-3 py-2.5 space-y-2">
+            <div className="text-[11px] font-medium text-muted-foreground">condition:</div>
+            <PrerequisiteEditor
+              layout="paper"
+              radioScope={path.id}
+              pathId={path.id}
+              prerequisite={path.prerequisite}
+              tasks={step.tasks ?? []}
+              onChange={(updated) => onUpdatePath(step.id, path.id, { prerequisite: updated ?? "" })}
+              stepId={step.id}
+              stepIndex={stepIndex}
+              onAddTask={onAddTask}
+              onAddPathCondition={onAddPathCondition}
+              onUpdateTask={onUpdateTask}
+            />
+          </section>
+
+          <section className="rounded-lg border border-border/70 bg-card text-card-foreground shadow-sm px-3 py-2.5 space-y-2">
+            <div className="text-[11px] font-medium text-muted-foreground">outcome:</div>
+            {editingTarget ? (
+              <select
+                autoFocus
+                value={currentTargetId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) return;
+                  const outcome = outcomeNodes.find((o) => o.id === id);
+                  if (outcome) {
+                    onSetPathTarget(step.id, path.id, {
+                      kind: "outcome",
+                      nodeId: id,
+                      label: outcome.title,
+                      type: outcome.outcome,
+                    });
+                  } else {
+                    onSetPathTarget(step.id, path.id, { kind: "step", stepId: id });
+                  }
+                  setEditingTarget(false);
+                }}
+                onBlur={() => setEditingTarget(false)}
+                className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">Select target…</option>
+                <optgroup label="Steps">
+                  {availableTargets
+                    .filter((t) => t.group === "Steps")
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="Outcomes">
+                  {availableTargets
+                    .filter((t) => t.group === "Outcomes")
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                </optgroup>
+              </select>
+            ) : (
+              <div className="space-y-1">
+                <p
+                  className="text-[12px] font-semibold leading-snug"
+                  style={consequenceColor ? { color: consequenceColor } : undefined}
+                >
+                  {formatAuthoringConsequenceLine(dest)}
+                </p>
+                {!isTimeout && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingTarget(true)}
+                    className="text-[9px] text-muted-foreground/50 hover:text-primary"
+                  >
+                    Change destination
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 };
@@ -540,138 +740,91 @@ const AddPathForm = ({
   );
 };
 
-// ── Evaluation section ───────────────────────────────────────────
-const weightColors: Record<"high" | "medium" | "low", { bg: string; color: string; border: string }> = {
-  high:   { bg: "hsl(0, 65%, 96%)",   color: "hsl(0, 65%, 42%)",   border: "hsl(0, 65%, 80%)" },
-  medium: { bg: "hsl(40, 80%, 95%)",  color: "hsl(40, 75%, 30%)",  border: "hsl(40, 80%, 78%)" },
-  low:    { bg: "hsl(220, 60%, 96%)", color: "hsl(220, 60%, 42%)", border: "hsl(220, 60%, 80%)" },
-};
-
-const DATALIST_ID = "competency-rubric-list";
-
+// ── Evaluation section (authoring only; fixed competency list) ───
 const EvaluationSection = ({
   step,
   onUpdateEvaluation,
   onClearEvaluation,
-  onAddEvaluation,
 }: {
   step: ScenarioStep;
   onUpdateEvaluation: (stepId: string, patch: UpdateEvaluationPatch) => void;
   onClearEvaluation: (stepId: string) => void;
-  onAddEvaluation: (stepId: string) => void;
 }) => {
   const ev = step.evaluation;
-  const wStyle = ev ? weightColors[ev.weight] : weightColors.high;
-  const matchedEntry = ev
-    ? COMPETENCY_RUBRIC.find((c) => c.label === ev.competency || c.id === ev.competencyId)
-    : undefined;
-
-  if (!ev) {
-    return (
-      <AddButton label="Add evaluation criteria" onClick={() => onAddEvaluation(step.id)} />
-    );
-  }
+  const expectedBehavior = ev?.expectedBehavior ?? "";
+  const competency = ev?.competency ?? "";
+  const notes = ev?.notes ?? "";
 
   return (
-    <div className="mx-4 mb-3 rounded-lg overflow-hidden" style={{ border: "1px solid hsl(var(--border))" }}>
-      {/* Competency + weight row */}
-      <div className="px-3 pt-2.5 pb-2 space-y-2" style={{ background: "hsl(var(--secondary) / 0.4)" }}>
-        <div className="flex items-center gap-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                Competency
-              </label>
-              {ev.competencyId && (
-                <span
-                  className="text-[7px] font-mono px-1 py-0.5 rounded"
-                  style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground) / 0.55)" }}
-                >
-                  {ev.competencyId}
-                </span>
-              )}
-            </div>
-            {/* Combobox: datalist provides rubric suggestions, freeform is still allowed */}
-            <datalist id={DATALIST_ID}>
-              {COMPETENCY_RUBRIC.map((c) => (
-                <option key={c.id} value={c.label} />
-              ))}
-            </datalist>
-            <input
-              type="text"
-              list={DATALIST_ID}
-              value={ev.competency}
-              onChange={(e) => {
-                const label = e.target.value;
-                const match = COMPETENCY_RUBRIC.find((c) => c.label === label);
-                onUpdateEvaluation(step.id, {
-                  competency: label,
-                  competencyId: match?.id,
-                });
-              }}
-              placeholder="Select or type a competency…"
-              className="w-full bg-transparent border-b border-border/25 hover:border-border/60 focus:border-primary/50 outline-none placeholder:text-muted-foreground/40 transition-colors py-0.5 text-[11px] font-semibold"
-            />
-          </div>
-          <div className="shrink-0">
-            <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60 block mb-1">
-              Weight
-            </label>
-            <select
-              value={ev.weight}
-              onChange={(e) =>
-                onUpdateEvaluation(step.id, { weight: e.target.value as "high" | "medium" | "low" })
-              }
-              className="text-[9px] font-bold uppercase tracking-wider rounded-full px-2 py-1 border outline-none focus:ring-2 focus:ring-primary/30 transition-all cursor-pointer"
-              style={{ background: wStyle.bg, color: wStyle.color, borderColor: wStyle.border }}
-            >
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-        </div>
+    <div
+      className="mx-4 mb-3 rounded-lg overflow-hidden opacity-90"
+      style={{ border: "1px solid hsl(var(--border) / 0.65)" }}
+    >
+      <div
+        className="px-3 pt-2.5 pb-2 space-y-2.5"
+        style={{ background: "hsl(var(--muted) / 0.25)" }}
+      >
+        <p className="text-[8px] text-muted-foreground/55 leading-relaxed">
+          Optional context for IDs and SMEs. Not used for scoring or reporting.
+        </p>
 
-        {/* Rubric sub-criteria — shown when a recognised competency is selected */}
-        {matchedEntry && (
-          <div
-            className="rounded-md px-2.5 py-2 space-y-1"
-            style={{ background: "hsl(var(--muted) / 0.5)", border: "1px solid hsl(var(--border) / 0.4)" }}
-          >
-            <p className="text-[7px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-1.5">
-              Rubric criteria · {matchedEntry.id}
-            </p>
-            {matchedEntry.criteria.map((c) => (
-              <div key={c.id} className="flex items-start gap-1.5">
-                <span className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0 mt-1.5" />
-                <p className="text-[9px] text-muted-foreground/70 leading-relaxed">{c.text}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Requirement */}
         <div>
-          <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60 block mb-1">
-            Requirement
+          <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/50 block mb-1">
+            Expected behavior
           </label>
           <textarea
-            value={ev.requirement}
-            onChange={(e) => onUpdateEvaluation(step.id, { requirement: e.target.value })}
-            placeholder="What must the learner do to satisfy this competency?"
+            value={expectedBehavior}
+            onChange={(e) => onUpdateEvaluation(step.id, { expectedBehavior: e.target.value })}
+            placeholder="What should the learner do or demonstrate at this step?"
             rows={3}
-            className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all resize-none"
+            className="w-full text-[11px] rounded-md border border-border/50 bg-background/80 px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/35 transition-all resize-none placeholder:text-muted-foreground/35"
+          />
+        </div>
+
+        <div>
+          <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/50 block mb-1">
+            Competency
+          </label>
+          <select
+            value={competency}
+            onChange={(e) =>
+              onUpdateEvaluation(step.id, {
+                competency: e.target.value as UpdateEvaluationPatch["competency"],
+              })
+            }
+            className="w-full text-[11px] rounded-md border border-border/50 bg-background/80 px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
+          >
+            <option value="">— None —</option>
+            {EVALUATION_COMPETENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/50 block mb-1">
+            Notes <span className="font-normal normal-case text-muted-foreground/40">(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => onUpdateEvaluation(step.id, { notes: e.target.value })}
+            placeholder="Short rationale or reminder"
+            className="w-full text-[11px] rounded-md border border-border/50 bg-background/80 px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/35"
           />
         </div>
       </div>
 
-      {/* Remove footer */}
-      <div className="px-3 py-1.5 flex justify-end" style={{ borderTop: "1px solid hsl(var(--border) / 0.5)" }}>
+      <div className="px-3 py-1.5 flex justify-end" style={{ borderTop: "1px solid hsl(var(--border) / 0.45)" }}>
         <button
+          type="button"
           onClick={() => onClearEvaluation(step.id)}
-          className="text-[9px] text-muted-foreground/40 hover:text-destructive transition-colors"
+          disabled={!ev}
+          className="text-[9px] text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-30 disabled:pointer-events-none"
         >
-          Remove evaluation
+          Clear evaluation
         </button>
       </div>
     </div>
@@ -692,13 +845,13 @@ export const StepDetailPanel = ({
   onDeletePath,
   onUpdateTask,
   onAddTask,
+  onAddPathCondition,
   onDeleteTask,
   onUpdatePersona,
   onUpdateStep,
   onSetPathTarget,
   onUpdateEvaluation,
   onClearEvaluation,
-  onAddEvaluation,
 }: StepDetailPanelProps) => {
   const [showAddPath, setShowAddPath] = useState(false);
   const [justAddedTaskId, setJustAddedTaskId] = useState<string | null>(null);
@@ -726,14 +879,29 @@ export const StepDetailPanel = ({
     setShowAddPath(false);
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isOpen, onClose]);
+
+  if (!isOpen || !step || !cfg) {
+    return null;
+  }
+
   return (
     <div
-      className="fixed right-0 top-0 h-screen w-[420px] z-30 flex flex-col bg-background border-l border-border shadow-2xl transition-transform duration-300 ease-out"
-      style={{ transform: isOpen ? "translateX(0)" : "translateX(100%)" }}
-      onClick={(e) => e.stopPropagation()}
+      className="fixed inset-0 z-30 flex items-start justify-center pt-14 pb-6 px-3 sm:px-4 overflow-y-auto bg-black/45 backdrop-blur-[2px]"
+      onClick={onClose}
+      role="presentation"
     >
-      {step && cfg && (
-        <>
+      <div
+        className="w-full max-w-7xl max-h-[min(92vh,960px)] min-h-0 flex flex-col bg-background border border-border rounded-xl shadow-2xl overflow-hidden my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
           {/* ── Header ─────────────────────────────────────────── */}
           <div
             className="flex items-start gap-3 px-4 py-3 shrink-0"
@@ -805,6 +973,49 @@ export const StepDetailPanel = ({
                 rows={2}
                 className="mt-1 w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all resize-none"
               />
+            </div>
+
+            {/* Modality */}
+            <SectionHeader label="Modality" />
+            <div className="px-4 pb-3">
+              <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60 block mb-1.5">
+                Interaction Type
+              </label>
+              <div className="flex gap-1.5">
+                {(
+                  [
+                    { value: "chat",     icon: MessageSquare, label: "Chat" },
+                    { value: "radio",    icon: Radio,         label: "Radio" },
+                    { value: "document", icon: FileText,      label: "Document" },
+                    { value: "video",    icon: Video,         label: "Video" },
+                  ] as const
+                ).map(({ value, icon: Icon, label }) => {
+                  const isActive = step.type === value;
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => onUpdateStep(step.id, { type: value })}
+                      className="flex-1 flex flex-col items-center gap-1 py-2 px-1 rounded-lg border transition-all text-[9px] font-semibold"
+                      style={
+                        isActive
+                          ? {
+                              background: `hsl(var(--node-${value}) / 0.12)`,
+                              borderColor: `hsl(var(--node-${value}) / 0.6)`,
+                              color: `hsl(var(--node-${value}))`,
+                            }
+                          : {
+                              background: "hsl(var(--muted) / 0.4)",
+                              borderColor: "hsl(var(--border) / 0.5)",
+                              color: "hsl(var(--muted-foreground) / 0.5)",
+                            }
+                      }
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Persona */}
@@ -971,8 +1182,10 @@ export const StepDetailPanel = ({
                 key={task.id}
                 task={task}
                 stepId={step.id}
+                stepIndex={stepIndex}
                 allTasks={step.tasks ?? []}
                 onUpdateTask={onUpdateTask}
+                onAddTask={onAddTask}
                 onDeleteTask={onDeleteTask}
                 autoFocus={task.id === justAddedTaskId}
                 onAutoFocusDone={() => setJustAddedTaskId(null)}
@@ -982,18 +1195,24 @@ export const StepDetailPanel = ({
 
             {/* Decision Points */}
             <SectionHeader label="Decision Points" count={step.paths?.length ?? 0} />
-            {(step.paths ?? []).map((path) => (
-              <PathRow
-                key={path.id}
-                path={path}
-                step={step}
-                allSteps={allSteps}
-                outcomeNodes={outcomeNodes}
-                onUpdatePath={onUpdatePath}
-                onDeletePath={onDeletePath}
-                onSetPathTarget={onSetPathTarget}
-              />
-            ))}
+            <div className="px-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {(step.paths ?? []).map((path) => (
+                <PathRow
+                  key={path.id}
+                  path={path}
+                  step={step}
+                  stepIndex={stepIndex}
+                  allSteps={allSteps}
+                  outcomeNodes={outcomeNodes}
+                  onUpdatePath={onUpdatePath}
+                  onDeletePath={onDeletePath}
+                  onSetPathTarget={onSetPathTarget}
+                  onAddTask={onAddTask}
+                  onAddPathCondition={onAddPathCondition}
+                  onUpdateTask={onUpdateTask}
+                />
+              ))}
+            </div>
             {showAddPath ? (
               <AddPathForm
                 step={step}
@@ -1013,13 +1232,11 @@ export const StepDetailPanel = ({
               step={step}
               onUpdateEvaluation={onUpdateEvaluation}
               onClearEvaluation={onClearEvaluation}
-              onAddEvaluation={onAddEvaluation}
             />
 
             <div className="h-8" />
           </div>
-        </>
-      )}
+    </div>
     </div>
   );
 };

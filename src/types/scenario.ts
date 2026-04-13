@@ -1,3 +1,5 @@
+import type { EvaluationCompetency } from "@/data/evaluationCompetencies";
+
 export type NodeType = "chat" | "radio" | "document" | "video";
 export type OutcomeType = "safe_path" | "partial_failure" | "critical_failure";
 
@@ -42,6 +44,8 @@ export interface ScenarioPath {
 export interface ScenarioTask {
   id: string;
   label: string;
+  /** Short line for branch pickers; full `label` remains canonical (tooltips, export). */
+  shortLabel?: string;
   required: boolean;
   hidden?: boolean;
   type?: "behavioral" | "tool";
@@ -58,12 +62,13 @@ export interface ScenarioInterruption {
   description: string;
 }
 
+export type { EvaluationCompetency };
+
+/** Lightweight step-level evaluation metadata (authoring + preview only; no scoring). */
 export interface StepEvaluation {
-  competency: string;
-  /** API ID that matches the simulation engine payload, e.g. "C4_Safeguard_Verification" */
-  competencyId?: string;
-  weight: "high" | "medium" | "low";
-  requirement: string;
+  expectedBehavior: string;
+  competency: EvaluationCompetency | "";
+  notes?: string;
 }
 
 export interface ScenarioStep {

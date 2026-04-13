@@ -2,13 +2,18 @@ import { useState, useMemo, useCallback } from "react";
 import NodeCanvas from "@/components/NodeCanvas";
 import { StepDetailPanel } from "@/components/StepDetailPanel";
 import { ScenarioLibraryPanel } from "@/components/ScenarioLibraryPanel";
+import { WalkthroughPanel } from "@/components/WalkthroughPanel";
 import { useScenarioEditor } from "@/hooks/useScenarioEditor";
 import originalJson from "@/data/scenarios.json";
 import scriptJson from "@/data/scenarios-script.json";
 import { JsonScenario } from "@/data/transformScenario";
-import { Download, Library } from "lucide-react";
+import { validateScenario } from "@/utils/scenarioValidation";
+import { Download, Library, Play } from "lucide-react";
 
 export type DisplayMode = "steps" | "grouped" | "modal";
+
+/** Reserve space for bottom walkthrough dock so the graph can pan above it. */
+const WALKTHROUGH_DOCK_INSET_PX = 340;
 
 const sources = [
   { key: "original", label: "Original", data: originalJson as JsonScenario[] },
@@ -43,6 +48,12 @@ const Index = () => {
   );
 
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+  const [walkthroughHighlightId, setWalkthroughHighlightId] = useState<string | null>(null);
+
+  const handleHighlightStep = useCallback((id: string | null) => {
+    setWalkthroughHighlightId(id);
+  }, []);
 
   const editor = useScenarioEditor(activeJsonScenario);
 
@@ -66,6 +77,11 @@ const Index = () => {
 
   const allSteps = editor.data?.scenarioNode.steps ?? [];
 
+  const validationWarnings = useMemo(
+    () => (editor.data ? validateScenario(editor.data) : []),
+    [editor.data],
+  );
+
   if (availableScenarios.length === 0) {
     return (
       <div className="flex items-center justify-center h-screen text-muted-foreground">
@@ -75,7 +91,10 @@ const Index = () => {
   }
 
   return (
-    <div className="relative w-full h-screen">
+    <div className="flex flex-col w-full h-screen overflow-hidden">
+      {/* Main area: canvas + panels stacked vertically */}
+      <div className="relative flex-1 min-h-0 min-w-0">
+
       {/* Top bar */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3">
         {/* Source toggle */}
@@ -159,19 +178,34 @@ const Index = () => {
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
           )}
         </button>
+
+        {/* Preview Walkthrough */}
+        {editor.data && (
+          <button
+            onClick={() => setWalkthroughOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border shadow-sm transition-colors border-emerald-700/60 bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/70 hover:text-emerald-200 hover:border-emerald-600"
+            title="Preview scenario as a learner walkthrough"
+          >
+            <Play className="w-3.5 h-3.5" />
+            Preview Walkthrough
+          </button>
+        )}
       </div>
 
-      {/* Canvas */}
+      {/* Canvas — walkthrough uses bottom dock; pan/zoom reserves space above it */}
       {editor.data ? (
         <NodeCanvas
           key={activeId}
           scenario={editor.data}
           displayMode={displayMode}
-          selectedStepId={editor.selectedStepId}
-          onSelectStep={editor.setSelectedStepId}
+          selectedStepId={walkthroughOpen ? walkthroughHighlightId : editor.selectedStepId}
+          onSelectStep={walkthroughOpen ? undefined : editor.setSelectedStepId}
+          validationWarnings={validationWarnings}
+          walkthroughMode={walkthroughOpen}
+          walkthroughBottomInset={walkthroughOpen ? WALKTHROUGH_DOCK_INSET_PX : 0}
         />
       ) : (
-        <div className="flex items-center justify-center h-screen text-muted-foreground">
+        <div className="flex items-center justify-center h-full text-muted-foreground">
           Could not parse selected scenario
         </div>
       )}
@@ -189,28 +223,44 @@ const Index = () => {
         onDeleteResource={editor.deleteResourceFromCatalog}
       />
 
-      {/* Step detail panel — fixed, slides in from the right */}
-      <StepDetailPanel
-        step={selectedStep}
-        stepIndex={selectedStepIndex}
-        allSteps={allSteps}
-        outcomeNodes={editor.data?.outcomeNodes ?? []}
-        personas={editor.data?.personas ?? []}
-        resources={editor.data?.resources ?? []}
-        onClose={() => editor.setSelectedStepId(null)}
-        onUpdatePath={editor.updatePath}
-        onAddPath={editor.addPath}
-        onDeletePath={editor.deletePath}
-        onUpdateTask={editor.updateTask}
-        onAddTask={editor.addTask}
-        onDeleteTask={editor.deleteTask}
-        onUpdatePersona={editor.updatePersona}
-        onUpdateStep={editor.updateStep}
-        onSetPathTarget={editor.setPathTarget}
-        onUpdateEvaluation={editor.updateEvaluation}
-        onClearEvaluation={editor.clearEvaluation}
-        onAddEvaluation={editor.addEvaluation}
-      />
+      {/* Step detail panel — suppressed during walkthrough preview */}
+      {!walkthroughOpen && (
+        <StepDetailPanel
+          step={selectedStep}
+          stepIndex={selectedStepIndex}
+          allSteps={allSteps}
+          outcomeNodes={editor.data?.outcomeNodes ?? []}
+          personas={editor.data?.personas ?? []}
+          resources={editor.data?.resources ?? []}
+          onClose={() => editor.setSelectedStepId(null)}
+          onUpdatePath={editor.updatePath}
+          onAddPath={editor.addPath}
+          onDeletePath={editor.deletePath}
+          onUpdateTask={editor.updateTask}
+          onAddTask={editor.addTask}
+          onAddPathCondition={editor.addPathConditionTask}
+          onDeleteTask={editor.deleteTask}
+          onUpdatePersona={editor.updatePersona}
+          onUpdateStep={editor.updateStep}
+          onSetPathTarget={editor.setPathTarget}
+          onUpdateEvaluation={editor.updateEvaluation}
+          onClearEvaluation={editor.clearEvaluation}
+        />
+      )}
+
+      {/* Walkthrough panel overlay */}
+      {walkthroughOpen && editor.data && (
+        <WalkthroughPanel
+          scenario={editor.data}
+          onExit={() => {
+            setWalkthroughOpen(false);
+            setWalkthroughHighlightId(null);
+          }}
+          onHighlightStep={handleHighlightStep}
+        />
+      )}
+
+      </div>{/* end main canvas area */}
     </div>
   );
 };

@@ -1,4 +1,15 @@
-import { ScenarioData, ScenarioStep, OutcomeNode, StepConnection, GlobalTimer, PrerequisiteCondition, Persona, ScenarioResource } from "@/types/scenario";
+import {
+  ScenarioData,
+  ScenarioStep,
+  OutcomeNode,
+  StepConnection,
+  GlobalTimer,
+  PrerequisiteCondition,
+  Persona,
+  ScenarioResource,
+  StepEvaluation,
+} from "@/types/scenario";
+import { normalizeCompetencyLabel, stepEvaluationHasContent } from "@/data/evaluationCompetencies";
 
 interface JsonPath {
   id: string;
@@ -17,6 +28,7 @@ interface JsonSceneInterruption {
 interface JsonSceneTask {
   id: string;
   label: string;
+  shortLabel?: string;
   required: boolean;
   hidden?: boolean;
   type?: "behavioral" | "tool";
@@ -25,10 +37,26 @@ interface JsonSceneTask {
 }
 
 interface JsonSceneEvaluation {
-  competency: string;
+  expectedBehavior?: string;
+  competency?: string;
+  notes?: string;
+  /** Legacy JSON field — mapped to expectedBehavior */
+  requirement?: string;
   competencyId?: string;
-  weight: "high" | "medium" | "low";
-  requirement: string;
+  weight?: "high" | "medium" | "low";
+}
+
+function mapJsonEvaluation(raw: JsonSceneEvaluation | undefined): StepEvaluation | undefined {
+  if (!raw) return undefined;
+  const expectedBehavior = (raw.expectedBehavior ?? raw.requirement ?? "").trimEnd();
+  const notesRaw = raw.notes?.trim();
+  const competency = normalizeCompetencyLabel(raw.competency);
+  const draft: StepEvaluation = {
+    expectedBehavior,
+    competency,
+    ...(notesRaw ? { notes: notesRaw } : {}),
+  };
+  return stepEvaluationHasContent(draft) ? draft : undefined;
 }
 
 interface JsonScene {
@@ -234,6 +262,7 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
       tasks: scene.tasks?.map((t) => ({
         id: t.id,
         label: t.label,
+        ...(t.shortLabel !== undefined ? { shortLabel: t.shortLabel } : {}),
         required: t.required,
         hidden: t.hidden,
         type: t.type,
@@ -242,7 +271,7 @@ export function transformScenario(json: JsonScenario): ScenarioData | null {
       })),
       interruptions: scene.interruptions?.map((s) => ({ id: s.id, type: s.type, description: s.description })),
       paths,
-      evaluation: scene.evaluation,
+      evaluation: mapJsonEvaluation(scene.evaluation),
     };
   });
 

@@ -116,12 +116,14 @@
           {
             "id": "A1_T3_Request_Isolation_List",
             "label": "Request the isolation list from the crew lead / maintenance lead",
+            "shortLabel": "Request isolation list",
             "required": true,
             "hidden": true
           },
           {
             "id": "A1_T4_Begin_Walkdown_with_Isolation_List",
             "label": "Request a walkdown to verify isolations and safeguards using the isolation list",
+            "shortLabel": "Walkdown with isolation list",
             "required": true,
             "hidden": true,
             "prerequisite": "A1_T3_Request_Isolation_List"
@@ -129,12 +131,14 @@
           {
             "id": "A1_T5_Begin_Walkdown_without_Isolation_List",
             "label": "Request a walkdown to verify isolations and safeguards without the isolation list",
+            "shortLabel": "Walkdown without isolation list",
             "required": false,
             "hidden": true
           },
           {
             "id": "A1_T6_Sign_Off_Start_Work_Check_and_Permit",
             "label": "Sign off on the Start Work Check form and the permit to work without a walkdown",
+            "shortLabel": "Sign off without walkdown",
             "required": false,
             "hidden": true
           }
@@ -260,6 +264,7 @@
           {
             "id": "A3_T1_Request_Zero_Energy_Verification",
             "label": "Ask Tom to open the bleeder valve to verify zero energy state",
+            "shortLabel": "Request bleeder / zero energy check",
             "required": true,
             "hidden": true
           }
@@ -295,6 +300,7 @@
           {
             "id": "I1_T1_Refuse_To_Activate",
             "label": "Refuse to approve pump start without completing the physical walkdown and verification",
+            "shortLabel": "Refuse pump start before walkdown complete",
             "required": true,
             "hidden": true
           }
