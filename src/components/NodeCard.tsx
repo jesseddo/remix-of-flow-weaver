@@ -257,7 +257,7 @@ export const ModalStepCard = ({
     >
       {/* Delete button */}
       {onDelete && !isDimmed && (
-        <div className="absolute -top-2 -right-2 z-20">
+        <div className="absolute -top-2 -right-2 z-20" onMouseDown={(e) => e.stopPropagation()}>
           <button
             type="button"
             onClick={(e) => {
@@ -477,7 +477,7 @@ export const GlobalTimerCard = ({
     >
       {/* Delete button */}
       {onDelete && (
-        <div className="absolute -top-2 -right-2 z-20">
+        <div className="absolute -top-2 -right-2 z-20" onMouseDown={(e) => e.stopPropagation()}>
           <button
             type="button"
             onClick={(e) => {
@@ -596,7 +596,7 @@ export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick, spotlightS
     >
       {/* Delete button */}
       {onDelete && !isDimmed && (
-        <div className="absolute -top-2 -right-2 z-20">
+        <div className="absolute -top-2 -right-2 z-20" onMouseDown={(e) => e.stopPropagation()}>
           <button
             type="button"
             onClick={(e) => {
