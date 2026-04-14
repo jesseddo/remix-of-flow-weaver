@@ -13,10 +13,11 @@ interface NodeCanvasProps {
   selectedStepId?: string | null;
   onSelectStep?: (stepId: string | null) => void;
   validationWarnings?: ValidationWarning[];
-  /** Preview walkthrough: emphasize only direct outgoing edges from the active step */
   walkthroughMode?: boolean;
-  /** Pixels reserved at bottom for walkthrough dock (used to center the active node) */
   walkthroughBottomInset?: number;
+  onDeleteStep?: (stepId: string) => void;
+  onDeleteOutcome?: (outcomeId: string) => void;
+  onDeleteTimer?: () => void;
 }
 
 type DraggableNode = ScenarioNode | OutcomeNode;
@@ -44,7 +45,7 @@ function estimateStepCardHeight(step: ScenarioStep): number {
   return (
     44 +                                    // header
     52 +                                    // description (~3 lines)
-    (taskCount > 0 ? 24 + taskCount * 36 : 0) +  // tasks section
+    (taskCount > 0 ? 24 + taskCount * 38 : 0) +  // tasks section
     (pathCount > 0 ? 24 + pathCount * 32 : 0) +  // paths section
     (stepEvaluationHasContent(step.evaluation) ? 80 : 0) +
     16                                      // bottom padding
@@ -54,7 +55,7 @@ function estimateStepCardHeight(step: ScenarioStep): number {
 function buildAdjacency(
   steps: ScenarioStep[],
   outcomeNodes: OutcomeNode[],
-  globalTimers: GlobalTimer[] = [],
+  globalTimer?: GlobalTimer,
 ) {
   const outcomeIds = new Set(outcomeNodes.map((o) => o.id));
   const successors = new Map<string, Set<string>>();
@@ -88,14 +89,12 @@ function buildAdjacency(
   // they land in column 0 alongside the start step and visually overlap.
   // Give each such step an artificial edge from the first step so the
   // DAG layout pushes it into its own column.
-  const timerTargetIds = new Set(globalTimers.map((t) => t.targetStepId));
   const firstStepId = steps[0]?.id;
-  if (firstStepId) {
-    for (const targetId of timerTargetIds) {
-      if (targetId !== firstStepId && (predecessorCount.get(targetId) ?? 0) === 0) {
-        successors.get(firstStepId)?.add(targetId);
-        predecessorCount.set(targetId, 1);
-      }
+  if (firstStepId && globalTimer) {
+    const targetId = globalTimer.targetStepId;
+    if (targetId !== firstStepId && (predecessorCount.get(targetId) ?? 0) === 0) {
+      successors.get(firstStepId)?.add(targetId);
+      predecessorCount.set(targetId, 1);
     }
   }
 
@@ -105,15 +104,15 @@ function buildAdjacency(
 function computeModalPositions(
   steps: ScenarioStep[],
   outcomeNodes: OutcomeNode[],
-  globalTimers: GlobalTimer[] = [],
+  globalTimer?: GlobalTimer,
 ): Map<string, { x: number; y: number }> {
   if (steps.length === 0) return new Map();
 
-  const MODAL_TOP = globalTimers.length > 0
+  const MODAL_TOP = globalTimer
     ? GLOBAL_TIMER_H + GLOBAL_TIMER_GAP + 80
     : 80;
 
-  const { successors, predecessorCount, outcomeIds } = buildAdjacency(steps, outcomeNodes, globalTimers);
+  const { successors, predecessorCount, outcomeIds } = buildAdjacency(steps, outcomeNodes, globalTimer);
 
   const column = new Map<string, number>();
   const inDegree = new Map(predecessorCount);
@@ -212,14 +211,13 @@ function computeModalPositions(
     }
   }
 
-  const timerY = 80;
-  for (let i = 0; i < globalTimers.length; i++) {
-    const timer = globalTimers[i];
-    const targetPos = positions.get(timer.targetStepId);
+  if (globalTimer) {
+    const timerY = 80;
+    const targetPos = positions.get(globalTimer.targetStepId);
     const timerX = targetPos
       ? targetPos.x + MODAL_STEP_W / 2 - GLOBAL_TIMER_W / 2
-      : MODAL_LEFT + i * (GLOBAL_TIMER_W + 20);
-    positions.set(timer.id, { x: timerX, y: timerY });
+      : MODAL_LEFT;
+    positions.set(globalTimer.id, { x: timerX, y: timerY });
   }
 
   return positions;
@@ -357,6 +355,9 @@ const NodeCanvas = ({
   validationWarnings,
   walkthroughMode = false,
   walkthroughBottomInset = 0,
+  onDeleteStep,
+  onDeleteOutcome,
+  onDeleteTimer,
 }: NodeCanvasProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -390,7 +391,7 @@ const NodeCanvas = ({
     () => computeModalPositions(
       scenario.scenarioNode.steps ?? [],
       scenario.outcomeNodes,
-      scenario.globalTimers,
+      scenario.globalTimer,
     ),
     // Recompute when the set of steps/outcomes changes (node added/removed)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -398,6 +399,7 @@ const NodeCanvas = ({
       scenario.scenarioNode.steps?.length,
       scenario.outcomeNodes.length,
       scenario.scenarioNode.id,
+      scenario.globalTimer?.id,
     ],
   );
   const [modalPositions, setModalPositions] = useState<Map<string, { x: number; y: number }>>(
@@ -641,7 +643,7 @@ const NodeCanvas = ({
     return { width: maxX + 200, height: maxY + 200 };
   }, [displayMode, modalPositions, scenarioNode, outcomeNodes]);
 
-  const globalTimers = scenario.globalTimers ?? [];
+  const globalTimer = scenario.globalTimer;
 
   const modalOutcomeNodes = useMemo(
     () =>
@@ -730,7 +732,7 @@ const NodeCanvas = ({
               steps={steps}
               outcomeNodes={modalOutcomeNodes}
               spotlightEdgeKeys={modalSpotlightEdgeKeys}
-              globalTimers={globalTimers}
+              globalTimer={globalTimer}
             />
 
             {steps.map((step, idx) => {
@@ -762,6 +764,8 @@ const NodeCanvas = ({
                   spotlight={stepSpotlight}
                   hasWarning={warningNodeIds?.has(step.id)}
                   walkthroughActive={walkthroughMode && selectedStepId === step.id}
+                  onDelete={onDeleteStep}
+                  resources={scenario.resources}
                 />
               );
             })}
@@ -781,23 +785,25 @@ const NodeCanvas = ({
                   onMouseDown={(e) => handleModalNodeMouseDown(node.id, e)}
                   onClick={(e) => e.stopPropagation()}
                   spotlightState={spotlightState}
+                  onDelete={onDeleteOutcome}
                 />
               );
             })}
 
-            {globalTimers.map((timer) => {
-              const pos = modalPositions.get(timer.id) ?? { x: 0, y: 0 };
+            {globalTimer && (() => {
+              const pos = modalPositions.get(globalTimer.id) ?? { x: 0, y: 0 };
               return (
                 <GlobalTimerCard
-                  key={timer.id}
-                  timer={timer}
+                  key={globalTimer.id}
+                  timer={globalTimer}
                   position={pos}
-                  isSelected={selectedNodeId === timer.id}
-                  onMouseDown={(e) => handleModalNodeMouseDown(timer.id, e)}
+                  isSelected={selectedNodeId === globalTimer.id}
+                  onMouseDown={(e) => handleModalNodeMouseDown(globalTimer.id, e)}
                   onClick={(e) => e.stopPropagation()}
+                  onDelete={onDeleteTimer}
                 />
               );
-            })}
+            })()}
           </>
         ) : (
           <>
@@ -829,6 +835,7 @@ const NodeCanvas = ({
                 isSelected={selectedNodeId === node.id}
                 onMouseDown={(e) => handleNodeMouseDown(node, e)}
                 onClick={(e) => e.stopPropagation()}
+                onDelete={onDeleteOutcome}
               />
             ))}
           </>

@@ -1,4 +1,4 @@
-import type { ScenarioTask } from "@/types/scenario";
+import type { ScenarioTask, ScenarioStep } from "@/types/scenario";
 
 /**
  * Split long task labels into shorter lines for scannable UI.
@@ -32,6 +32,15 @@ export function resolveTaskAuthoringLine(taskId: string, tasks: ScenarioTask[]):
   const t = tasks.find((x) => x.id === taskId);
   if (!t) return taskId;
   return taskEditorDisplay(t).primary;
+}
+
+/** Like resolveTaskAuthoringLine but searches across all steps in the scenario. */
+export function resolveTaskAuthoringLineAcrossSteps(taskId: string, allSteps: ScenarioStep[]): string {
+  for (const step of allSteps) {
+    const t = step.tasks?.find((x) => x.id === taskId);
+    if (t) return taskEditorDisplay(t).primary;
+  }
+  return taskId;
 }
 
 export function taskEditorDisplay(task: ScenarioTask): {

@@ -1,7 +1,44 @@
 import { useState } from "react";
 import { ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer, StepEvaluation, ScenarioPath } from "@/types/scenario";
+import type { ScenarioResource, ScenarioTask } from "@/types/scenario";
+import { taskEditorDisplay } from "@/utils/taskDisplay";
 import { stepEvaluationHasContent } from "@/data/evaluationCompetencies";
-import { MessageSquare, Radio, FileText, Video, User, Zap, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, ChevronDown, Timer, Clock } from "lucide-react";
+import { MessageSquare, Radio, FileText, Video, User, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, ChevronDown, Timer, Clock, X } from "lucide-react";
+
+// ── Inline confirmation popover ──────────────────────────────────
+const DeleteConfirmPopover = ({
+  onConfirm,
+  onCancel,
+  label,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+  label: string;
+}) => (
+  <div
+    className="absolute top-8 right-0 z-50 w-48 rounded-lg border border-border bg-popover shadow-lg p-2.5 animate-in fade-in-0 zoom-in-95 duration-100"
+    onClick={(e) => e.stopPropagation()}
+    onMouseDown={(e) => e.stopPropagation()}
+  >
+    <p className="text-[11px] text-foreground font-medium mb-2">
+      Delete this {label}?
+    </p>
+    <div className="flex gap-1.5">
+      <button
+        onClick={onConfirm}
+        className="flex-1 py-1 rounded-md text-[10px] font-semibold bg-destructive text-destructive-foreground transition-all hover:bg-destructive/90"
+      >
+        Yes, delete
+      </button>
+      <button
+        onClick={onCancel}
+        className="flex-1 py-1 rounded-md text-[10px] font-medium text-muted-foreground border border-border/50 hover:bg-muted transition-colors"
+      >
+        Cancel
+      </button>
+    </div>
+  </div>
+);
 import type { OutcomeType } from "@/types/scenario";
 import type { DisplayMode } from "@/pages/Index";
 
@@ -83,6 +120,50 @@ const flowBadge: Record<string, string> = {
   linear: "bg-muted text-muted-foreground",
 };
 
+const TASK_SHORT_LABELS: Record<string, string> = {
+  request_document: "Request",
+  review_document: "Review",
+  review_document_checklist_checked: "Review (checked)",
+  review_document_checklist_unchecked: "Review (unchecked)",
+  approve_document: "Approve",
+  chat: "Chat",
+};
+
+function taskDescriptionParts(
+  task: ScenarioTask,
+  resources: ScenarioResource[],
+  shortLabel: string,
+): { action: string; context?: string; detail?: string } {
+  const resource = task.resourceId
+    ? resources.find((r) => r.id === task.resourceId)
+    : undefined;
+
+  if (resource) {
+    const checklistNames =
+      resource.checkboxItems && task.checklistItemIds
+        ? task.checklistItemIds
+            .map((cid) => resource.checkboxItems!.find((ci) => ci.id === cid)?.name)
+            .filter(Boolean)
+        : [];
+    return {
+      action: shortLabel,
+      context: resource.title,
+      detail: checklistNames.length > 0 ? checklistNames.join(", ") : undefined,
+    };
+  }
+
+  const display = taskEditorDisplay(task);
+  const primary = display.primary;
+  const isRedundant =
+    primary.toLowerCase() === shortLabel.toLowerCase() ||
+    primary.toLowerCase() === task.actionType.replace(/_/g, " ");
+
+  return {
+    action: shortLabel,
+    context: isRedundant ? undefined : primary,
+  };
+}
+
 interface ScenarioCardProps {
   node: ScenarioNode;
   isSelected: boolean;
@@ -100,6 +181,7 @@ interface OutcomeCardProps {
   onMouseDown: (e: React.MouseEvent) => void;
   onClick: (e: React.MouseEvent) => void;
   spotlightState?: "target" | "dimmed" | "none";
+  onDelete?: (outcomeId: string) => void;
 }
 
 const StepRow = ({
@@ -172,27 +254,15 @@ const StepRow = ({
 
         {step.paths && step.paths.length > 0 && (
           <div className="space-y-1 pl-8">
-            {step.paths.map((dp, i) => {
-              const isTimeout = dp.timeoutMs !== undefined;
-              return (
+            {step.paths.map((dp, i) => (
               <div
                 key={i}
                 className="flex items-center gap-2 text-[10px] text-card-foreground bg-secondary/60 rounded-md px-2 py-1 relative"
               >
-                {!isTimeout ? (
-                  <User className="w-2.5 h-2.5 text-primary shrink-0" />
-                ) : (
-                  <Zap className="w-2.5 h-2.5 text-node-warning shrink-0" />
-                )}
+                <User className="w-2.5 h-2.5 text-primary shrink-0" />
                 <span className="leading-tight text-[10px]">{dp.label}</span>
-                <span
-                  className={`ml-auto text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded ${
-                    !isTimeout
-                      ? "bg-primary/10 text-primary"
-                      : "bg-node-warning/15 text-node-warning"
-                  }`}
-                >
-                  {isTimeout ? "timeout" : "user"}
+                <span className="ml-auto text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded bg-primary/10 text-primary">
+                  condition
                 </span>
                 {dp.connections && dp.connections.length > 0 && (() => {
                   const dotType = dp.connections[0].type;
@@ -209,8 +279,7 @@ const StepRow = ({
                   );
                 })()}
               </div>
-              );
-            })}
+            ))}
           </div>
         )}
 
@@ -262,29 +331,17 @@ const GroupedTriggersView = ({ node }: { node: ScenarioNode }) => {
               marginBottom: "2px",
             }}
           >
-            {triggers.map((dp: ScenarioPath, dpIndex: number) => {
-              const isTimeout = dp.timeoutMs !== undefined;
-              return (
+            {triggers.map((dp: ScenarioPath, dpIndex: number) => (
               <div
                 key={dpIndex}
                 className="flex items-center gap-2 text-[10px] text-card-foreground bg-secondary/60 rounded-md px-2 py-1.5 relative mb-1 last:mb-0"
                 onMouseEnter={() => setHoveredStepIndex(stepIndex)}
                 onMouseLeave={() => setHoveredStepIndex(null)}
               >
-                {!isTimeout ? (
-                  <User className="w-2.5 h-2.5 text-primary shrink-0" />
-                ) : (
-                  <Zap className="w-2.5 h-2.5 text-node-warning shrink-0" />
-                )}
+                <User className="w-2.5 h-2.5 text-primary shrink-0" />
                 <span className="leading-tight text-[10px]">{dp.label}</span>
-                <span
-                  className={`ml-auto text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded ${
-                    !isTimeout
-                      ? "bg-primary/10 text-primary"
-                      : "bg-node-warning/15 text-node-warning"
-                  }`}
-                >
-                  {isTimeout ? "timeout" : "user"}
+                <span className="ml-auto text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded bg-primary/10 text-primary">
+                  condition
                 </span>
                 {dp.connections && dp.connections.length > 0 && (() => {
                   const dotType = dp.connections[0].type;
@@ -301,8 +358,7 @@ const GroupedTriggersView = ({ node }: { node: ScenarioNode }) => {
                   );
                 })()}
               </div>
-              );
-            })}
+            ))}
           </div>
         );
       })}
@@ -353,8 +409,9 @@ interface ModalStepCardProps {
   onMouseDown: (e: React.MouseEvent) => void;
   spotlight?: StepSpotlight;
   hasWarning?: boolean;
-  /** Preview walkthrough: match emerald accent on bottom dock */
   walkthroughActive?: boolean;
+  onDelete?: (stepId: string) => void;
+  resources?: ScenarioResource[];
 }
 
 export const ModalStepCard = ({
@@ -366,7 +423,10 @@ export const ModalStepCard = ({
   spotlight,
   hasWarning,
   walkthroughActive,
+  onDelete,
+  resources = [],
 }: ModalStepCardProps) => {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const cfg = typeConfig[step.type];
   const Icon = cfg.icon;
   const isDimmed = spotlight?.dimmed ?? false;
@@ -396,6 +456,33 @@ export const ModalStepCard = ({
       onMouseDown={onMouseDown}
       onClick={(e) => e.stopPropagation()}
     >
+      {/* Delete button */}
+      {onDelete && !isDimmed && (
+        <div className="absolute -top-2 -right-2 z-20">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmingDelete(true);
+            }}
+            className="w-5 h-5 rounded-full bg-muted border border-border shadow-sm flex items-center justify-center text-muted-foreground/50 hover:bg-destructive hover:text-white hover:border-destructive transition-colors"
+            title="Delete step"
+          >
+            <X className="w-3 h-3" />
+          </button>
+          {confirmingDelete && (
+            <DeleteConfirmPopover
+              label="step"
+              onConfirm={() => {
+                setConfirmingDelete(false);
+                onDelete(step.id);
+              }}
+              onCancel={() => setConfirmingDelete(false)}
+            />
+          )}
+        </div>
+      )}
+
       <div
         className="px-3 py-2 flex items-center gap-2"
         style={{
@@ -449,34 +536,52 @@ export const ModalStepCard = ({
 
       {/* Tasks */}
       {step.tasks && step.tasks.length > 0 && (
-        <div className="px-3 pb-2 space-y-0.5">
+        <div className="px-3 pb-2 space-y-1">
           <div className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1">
-            Expected Actions
+            Tasks
           </div>
-          {step.tasks.map((task) => (
-            <div
-              key={task.id}
-              className="flex items-center gap-1.5 text-[9px] rounded px-2 py-1"
-              style={{ background: "hsl(var(--secondary) / 0.5)" }}
-            >
-              <span
-                className="font-mono shrink-0 text-[8px]"
-                style={{ color: "hsl(var(--muted-foreground) / 0.5)" }}
-                title={task.id}
+          {step.tasks.map((task, taskIdx) => {
+            const shortLabel = TASK_SHORT_LABELS[task.actionType] ?? task.actionType;
+            const desc = taskDescriptionParts(task, resources, shortLabel);
+
+            return (
+              <div
+                key={task.id}
+                className="flex items-start gap-2 text-[9px] rounded px-2 py-1"
+                style={{ background: "hsl(var(--secondary) / 0.5)" }}
               >
-                {task.id.split("_").slice(0, 2).join("_")}
-              </span>
-              <span className="text-card-foreground leading-tight">{task.label}</span>
-              {task.required && (
-                <span
-                  className="ml-auto text-[7px] font-bold uppercase shrink-0 px-1 py-0.5 rounded"
-                  style={{ background: "hsl(var(--primary) / 0.1)", color: "hsl(var(--primary) / 0.8)" }}
-                >
-                  required
+                <span className="text-[8px] font-medium tabular-nums text-muted-foreground/60 shrink-0 mt-px" style={{ minWidth: "10px", textAlign: "right" }}>
+                  {taskIdx + 1}
                 </span>
-              )}
-            </div>
-          ))}
+                <div className="flex-1 min-w-0 leading-tight">
+                  <span className="font-medium text-card-foreground">
+                    {desc.action}
+                  </span>
+                  {desc.context && (
+                    <span className="text-muted-foreground">
+                      {" "}&middot; {desc.context}
+                    </span>
+                  )}
+                  {desc.detail && (
+                    <span className="text-muted-foreground/70 italic text-[8px]">
+                      {" "}&#x203A; {desc.detail}
+                    </span>
+                  )}
+                </div>
+                {task.scoreIncrement != null && task.scoreIncrement > 0 && (
+                  <span
+                    className="text-[8px] font-bold shrink-0 px-1 py-0.5 rounded"
+                    style={{
+                      background: "hsl(145, 65%, 42%, 0.15)",
+                      color: "hsl(145, 65%, 30%)",
+                    }}
+                  >
+                    +{task.scoreIncrement}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -486,76 +591,27 @@ export const ModalStepCard = ({
             className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1 pt-1"
             style={{ borderTop: "1px solid hsl(var(--border))" }}
           >
-            Branching Paths
+            Conditions
           </div>
           {step.paths.map((dp, i) => {
-            const isTimeout = dp.timeoutMs !== undefined;
             const isOutcomeConn = dp.connections && dp.connections.length > 0;
             const dotType = isOutcomeConn ? dp.connections![0].type : "default";
             const dot = isOutcomeConn
               ? connectionDotColor(dotType)
-              : isTimeout
-                ? { bg: "hsl(38, 92%, 50%)", shadow: "hsla(38, 92%, 50%, 0.35)" }
-                : { bg: "hsl(220, 70%, 55%)", shadow: "hsla(220, 70%, 55%, 0.3)" };
-
-            const timeoutLabel = isTimeout && dp.timeoutMs
-              ? formatTimeoutMs(dp.timeoutMs)
-              : null;
-            const isRadioInterruption = isTimeout && dp.interruptionType === "radio";
-            const displayText = isRadioInterruption
-              ? (dp.interruptionLabel ?? dp.label)
-              : dp.label;
+              : { bg: "hsl(220, 70%, 55%)", shadow: "hsla(220, 70%, 55%, 0.3)" };
 
             const isDpFaded = spotlight && !spotlight.dimmed && spotlight.fadedDpIndices.has(i);
 
             return (
               <div
                 key={i}
-                className={`flex items-center gap-1.5 text-[9px] text-card-foreground rounded px-2 relative transition-opacity duration-200 ${
-                  isRadioInterruption
-                    ? "py-1.5 bg-amber-500/10 border border-amber-400/30"
-                    : isTimeout
-                      ? "py-1 bg-amber-500/10 border border-amber-400/25"
-                      : "py-1 bg-secondary/60"
-                }`}
+                className="flex items-center gap-1.5 text-[9px] text-card-foreground rounded px-2 py-1 bg-secondary/60 relative transition-opacity duration-200"
                 style={{ opacity: isDpFaded ? 0.18 : 1 }}
               >
-                {isRadioInterruption ? (
-                  /* Radio call interruption: compound icon pair */
-                  <div className="flex items-center shrink-0" style={{ gap: "1px" }}>
-                    <Radio
-                      className="w-3 h-3"
-                      style={{ color: "hsl(38, 92%, 42%)" }}
-                    />
-                    <Timer
-                      className="w-2 h-2"
-                      style={{ color: "hsl(38, 92%, 55%)" }}
-                    />
-                  </div>
-                ) : isTimeout ? (
-                  <Timer className="w-2.5 h-2.5 shrink-0" style={{ color: "hsl(38, 92%, 45%)" }} />
-                ) : !isTimeout ? (
-                  <User className="w-2.5 h-2.5 text-primary shrink-0" />
-                ) : (
-                  <Zap className="w-2.5 h-2.5 text-node-warning shrink-0" />
-                )}
-
-                <span className={`leading-tight text-[9px] flex-1 break-words ${isTimeout ? "italic" : ""}`}>
-                  {displayText}
+                <User className="w-2.5 h-2.5 text-primary shrink-0" />
+                <span className="leading-tight text-[9px] flex-1 break-words">
+                  {dp.label}
                 </span>
-
-                {timeoutLabel && (
-                  <span
-                    className="text-[8px] font-bold shrink-0 px-1.5 py-0.5 rounded font-mono"
-                    style={{
-                      background: "hsl(38, 92%, 50%, 0.15)",
-                      color: "hsl(38, 92%, 38%)",
-                      border: "1px solid hsl(38, 92%, 50%, 0.3)",
-                    }}
-                  >
-                    {timeoutLabel}
-                  </span>
-                )}
 
                 {(dp.targetStepId || isOutcomeConn) && (
                   <div
@@ -586,6 +642,7 @@ interface GlobalTimerCardProps {
   isSelected: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
   onClick: (e: React.MouseEvent) => void;
+  onDelete?: () => void;
 }
 
 export const GlobalTimerCard = ({
@@ -594,7 +651,9 @@ export const GlobalTimerCard = ({
   isSelected,
   onMouseDown,
   onClick,
+  onDelete,
 }: GlobalTimerCardProps) => {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const minutes = Math.floor(timer.timeoutMs / 60000);
   const seconds = (timer.timeoutMs % 60000) / 1000;
   const timeLabel = seconds === 0 ? `${minutes} min` : `${minutes}:${String(seconds).padStart(2, "0")}`;
@@ -617,6 +676,33 @@ export const GlobalTimerCard = ({
       onMouseDown={onMouseDown}
       onClick={onClick}
     >
+      {/* Delete button */}
+      {onDelete && (
+        <div className="absolute -top-2 -right-2 z-20">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmingDelete(true);
+            }}
+            className="w-5 h-5 rounded-full bg-muted border border-border shadow-sm flex items-center justify-center text-muted-foreground/50 hover:bg-destructive hover:text-white hover:border-destructive transition-colors"
+            title="Delete timer"
+          >
+            <X className="w-3 h-3" />
+          </button>
+          {confirmingDelete && (
+            <DeleteConfirmPopover
+              label="timer"
+              onConfirm={() => {
+                setConfirmingDelete(false);
+                onDelete();
+              }}
+              onCancel={() => setConfirmingDelete(false)}
+            />
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <div
         className="px-3 py-2 flex items-center gap-2"
@@ -730,7 +816,8 @@ export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMo
   );
 };
 
-export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick, spotlightState = "none" }: OutcomeCardProps) => {
+export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick, spotlightState = "none", onDelete }: OutcomeCardProps) => {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const style = outcomeStyles[node.outcome];
   const isTarget = spotlightState === "target";
   const isDimmed = spotlightState === "dimmed";
@@ -738,7 +825,7 @@ export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick, spotlightS
   return (
     <div
       data-modal-node={node.id}
-      className={`w-[220px] rounded-2xl shadow-lg overflow-hidden cursor-grab active:cursor-grabbing transition-all duration-200 ${
+      className={`w-[220px] rounded-2xl shadow-lg overflow-visible cursor-grab active:cursor-grabbing transition-all duration-200 ${
         isSelected ? "ring-2 ring-primary scale-105" : isTarget ? "" : "hover:scale-[1.02]"
       }`}
       style={{
@@ -758,6 +845,33 @@ export const OutcomeCard = ({ node, isSelected, onMouseDown, onClick, spotlightS
       onMouseDown={onMouseDown}
       onClick={onClick}
     >
+      {/* Delete button */}
+      {onDelete && !isDimmed && (
+        <div className="absolute -top-2 -right-2 z-20">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmingDelete(true);
+            }}
+            className="w-5 h-5 rounded-full bg-muted border border-border shadow-sm flex items-center justify-center text-muted-foreground/50 hover:bg-destructive hover:text-white hover:border-destructive transition-colors"
+            title="Delete outcome"
+          >
+            <X className="w-3 h-3" />
+          </button>
+          {confirmingDelete && (
+            <DeleteConfirmPopover
+              label="outcome"
+              onConfirm={() => {
+                setConfirmingDelete(false);
+                onDelete(node.id);
+              }}
+              onCancel={() => setConfirmingDelete(false)}
+            />
+          )}
+        </div>
+      )}
+
       <div className="p-5 flex flex-col items-center text-center gap-3">
         {isTarget && (
           <div

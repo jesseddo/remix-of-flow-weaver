@@ -47,7 +47,13 @@
       "title": "Start Work Check (SWC) Form",
       "type": "Document",
       "description": "Mandatory checklist for verifying safety requirements before starting work",
-      "url": "https://oe-ffl-chat.vercel.app/SWC.pdf"
+      "url": "https://oe-ffl-chat.vercel.app/SWC.pdf",
+      "checkboxItems": [
+        { "id": "zero-energy", "name": "zero energy" },
+        { "id": "test-1", "name": "test-1" },
+        { "id": "test-2", "name": "test-2" },
+        { "id": "test-3", "name": "test-3" }
+      ]
     },
     {
       "id": "ISOLATION_LIST",

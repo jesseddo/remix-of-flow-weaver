@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   ModuleData,
   ScenarioData,
@@ -7,14 +7,27 @@ import {
 } from "@/types/scenario";
 import { JsonModule, transformModule } from "@/data/transformScenario";
 import { exportModuleToJsonFile } from "@/utils/exportToJson";
+import { saveModulesToStorage, clearStorage } from "@/utils/localStorageSync";
 
-export function useModuleEditor(initialJsonModules: JsonModule[]) {
-  const [modules, setModules] = useState<ModuleData[]>(() =>
-    initialJsonModules.map(transformModule)
-  );
+export function useModuleEditor(
+  initialModules: ModuleData[],
+  defaultJsonModules: JsonModule[]
+) {
+  const [modules, setModules] = useState<ModuleData[]>(initialModules);
   const [isDirty, setIsDirty] = useState(false);
 
   const markDirty = useCallback(() => setIsDirty(true), []);
+
+  // Debounced auto-save to localStorage
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveModulesToStorage(modules);
+      setIsDirty(false);
+    }, 500);
+    return () => clearTimeout(saveTimer.current);
+  }, [modules]);
 
   // ── Module CRUD ─────────────────────────────────────────────────
 
@@ -282,6 +295,14 @@ export function useModuleEditor(initialJsonModules: JsonModule[]) {
     return mod.id;
   }, [markDirty]);
 
+  // ── Reset to defaults ────────────────────────────────────────
+
+  const resetToDefaults = useCallback(() => {
+    clearStorage();
+    setModules(defaultJsonModules.map(transformModule));
+    setIsDirty(false);
+  }, [defaultJsonModules]);
+
   return {
     modules,
     isDirty,
@@ -302,5 +323,6 @@ export function useModuleEditor(initialJsonModules: JsonModule[]) {
     deleteResource,
     exportModule,
     importModule,
+    resetToDefaults,
   };
 }

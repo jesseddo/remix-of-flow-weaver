@@ -9,9 +9,9 @@ interface ScenarioMetadataPopoverProps {
 export const ScenarioMetadataPopover = ({ data }: ScenarioMetadataPopoverProps) => {
   const [open, setOpen] = useState(false);
 
-  const hasTimers = data.globalTimers.length > 0;
+  const hasTimer = !!data.globalTimer;
   const hasOutcomes = data.outcomeNodes.length > 0;
-  if (!hasTimers && !hasOutcomes) return null;
+  if (!hasTimer && !hasOutcomes) return null;
 
   return (
     <div className="relative">
@@ -34,30 +34,30 @@ export const ScenarioMetadataPopover = ({ data }: ScenarioMetadataPopoverProps) 
           onClick={(e) => e.stopPropagation()}
         >
           <div className="p-3 max-h-[400px] overflow-y-auto">
-            {hasTimers && (
+            {hasTimer && data.globalTimer && (
               <div className="mb-3">
                 <div className="flex items-center gap-1.5 mb-2">
                   <Timer className="w-3 h-3 text-muted-foreground" />
                   <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60">
-                    Global Timers
+                    Global Timer
                   </span>
                 </div>
-                {data.globalTimers.map((t) => (
-                  <div
-                    key={t.id}
-                    className="mb-1.5 px-3 py-2 rounded-md"
-                    style={{
-                      border: "1px solid hsl(var(--border))",
-                      background: "hsl(var(--secondary) / 0.35)",
-                    }}
-                  >
-                    <p className="text-[11px] font-semibold text-foreground">{t.name}</p>
-                    <p className="text-[9px] text-muted-foreground mt-0.5">
-                      Triggers after {Math.round(t.timeoutMs / 1000)}s →{" "}
-                      <span className="font-mono">{t.targetStepId}</span>
-                    </p>
-                  </div>
-                ))}
+                <div
+                  className="mb-1.5 px-3 py-2 rounded-md"
+                  style={{
+                    border: "1px solid hsl(var(--border))",
+                    background: "hsl(var(--secondary) / 0.35)",
+                  }}
+                >
+                  <p className="text-[11px] font-semibold text-foreground">{data.globalTimer.name}</p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5">
+                    Triggers after {Math.round(data.globalTimer.timeoutMs / 1000)}s →{" "}
+                    <span className="font-mono">{data.globalTimer.targetStepId}</span>
+                  </p>
+                  <p className="text-[8px] text-muted-foreground/70 mt-1 italic">
+                    Ignored if learner is already on or past the target step
+                  </p>
+                </div>
               </div>
             )}
 

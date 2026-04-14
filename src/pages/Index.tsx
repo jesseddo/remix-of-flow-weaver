@@ -115,7 +115,7 @@ const Index = () => {
 
   const steps = editor.data?.scenarioNode.steps ?? [];
   const outcomeNodes = editor.data?.outcomeNodes ?? [];
-  const totalNodes = steps.length + outcomeNodes.length + (editor.data?.globalTimers.length ?? 0);
+  const totalNodes = steps.length + outcomeNodes.length + (editor.data?.globalTimer ? 1 : 0);
 
   return (
     <div className="flex flex-col w-full h-screen overflow-hidden">
@@ -239,7 +239,19 @@ const Index = () => {
         onNewScenario={handleNewScenario}
         onAddStep={(type) => editor.addNewStep(type)}
         onAddOutcome={editor.addOutcomeNode}
-        onAddTimer={editor.addGlobalTimer}
+        onAddTimer={(timeoutMs, targetStepId) => {
+          if (!editor.data?.globalTimer) {
+            editor.setGlobalTimer({
+              id: `timer-${Date.now()}`,
+              name: "Global Timer",
+              timeoutMs,
+              targetStepId,
+            });
+          }
+        }}
+        hasGlobalTimer={!!editor.data?.globalTimer}
+        existingOutcomeTypes={outcomeNodes.map((o) => o.outcome)}
+        steps={editor.data?.scenarioNode.steps ?? []}
         onSave={handleExport}
         isDirty={editor.isDirty}
       />
@@ -256,6 +268,9 @@ const Index = () => {
             validationWarnings={validationWarnings}
             walkthroughMode={walkthroughOpen}
             walkthroughBottomInset={walkthroughOpen ? WALKTHROUGH_DOCK_INSET_PX : 0}
+            onDeleteStep={editor.deleteStep}
+            onDeleteOutcome={editor.deleteOutcomeNode}
+            onDeleteTimer={() => editor.setGlobalTimer(undefined)}
           />
         ) : (
           <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -291,11 +306,13 @@ const Index = () => {
             onDeletePath={editor.deletePath}
             onUpdateTask={editor.updateTask}
             onAddTask={editor.addTask}
-            onAddPathCondition={editor.addPathConditionTask}
             onDeleteTask={editor.deleteTask}
             onUpdatePersona={editor.updatePersona}
             onUpdateStep={editor.updateStep}
             onSetPathTarget={editor.setPathTarget}
+            onClearPathTarget={editor.clearPathTarget}
+            onCreateOutcomeAndLink={editor.createOutcomeAndLinkToPath}
+            onCreateStepAndLink={editor.createStepAndLinkToPath}
             onUpdateEvaluation={editor.updateEvaluation}
             onClearEvaluation={editor.clearEvaluation}
             onAddPersonaToCatalog={editor.addPersonaToCatalog}

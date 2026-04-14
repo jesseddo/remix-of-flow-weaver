@@ -9,6 +9,7 @@ import {
   Persona,
   ScenarioResource,
   StepEvaluation,
+  TaskActionType,
 } from "@/types/scenario";
 import { normalizeCompetencyLabel, stepEvaluationHasContent } from "@/data/evaluationCompetencies";
 
@@ -17,7 +18,6 @@ interface JsonPath {
   description: string;
   prerequisite: PrerequisiteCondition;
   target_id: string;
-  timeout_ms?: number;
 }
 
 interface JsonSceneInterruption {
@@ -30,7 +30,14 @@ interface JsonSceneTask {
   id: string;
   label: string;
   shortLabel?: string;
-  required: boolean;
+  actionType?: TaskActionType;
+  resourceId?: string;
+  checklistItemId?: string;
+  checklistItemIds?: string[];
+  chatCriteria?: string;
+  scoreIncrement?: number;
+  /** @deprecated Legacy fields — mapped to actionType "chat" */
+  required?: boolean;
   hidden?: boolean;
   type?: "behavioral" | "tool";
   tool?: { action: string; resourceId?: string };
@@ -68,6 +75,7 @@ interface JsonScene {
   persona?: string;
   personaAdherence?: number;
   resource?: string;
+  messageDescription?: string;
   paths?: JsonPath[];
   tasks?: JsonSceneTask[];
   interruptions?: JsonSceneInterruption[];
@@ -101,6 +109,7 @@ export interface JsonSceneResource {
   type: string;
   description?: string;
   url?: string;
+  checkboxItems?: { id: string; name: string }[];
 }
 
 export interface JsonScenario {
@@ -232,6 +241,7 @@ export function transformScenario(
       type: r.type,
       description: r.description,
       url: r.url,
+      ...(r.checkboxItems && r.checkboxItems.length > 0 ? { checkboxItems: r.checkboxItems } : {}),
     }));
 
   const teamForCoach = json.team ?? options?.externalPersonas?.map((p) => ({ name: p.name, role: p.role, description: p.description ?? "" })) ?? [];
@@ -255,26 +265,12 @@ export function transformScenario(
         targetStepId = path.target_id;
       }
 
-      const isTimeout = path.timeout_ms !== undefined;
-
-      const linkedInterruption =
-        isTimeout && scene.interruptions && scene.interruptions.length > 0
-          ? scene.interruptions[0]
-          : undefined;
-
       return {
         id: path.id,
         label: path.description,
         prerequisite: path.prerequisite,
         ...(connections.length > 0 ? { connections } : {}),
         ...(targetStepId ? { targetStepId } : {}),
-        ...(isTimeout && path.timeout_ms ? { timeoutMs: path.timeout_ms } : {}),
-        ...(linkedInterruption
-          ? {
-              interruptionType: linkedInterruption.type,
-              interruptionLabel: linkedInterruption.description,
-            }
-          : {}),
       };
     });
 
@@ -285,6 +281,7 @@ export function transformScenario(
       persona: scene.persona ?? defaultPersonaName,
       personaAdherence: scene.personaAdherence,
       resource: scene.resource,
+      messageDescription: scene.messageDescription,
       description: scene.description,
       tags: inferTags(scene),
       flowType: inferFlowType(scene),
@@ -292,11 +289,15 @@ export function transformScenario(
         id: t.id,
         label: t.label,
         ...(t.shortLabel !== undefined ? { shortLabel: t.shortLabel } : {}),
-        required: t.required,
-        hidden: t.hidden,
-        type: t.type,
-        tool: t.tool,
-        prerequisite: t.prerequisite,
+        actionType: t.actionType ?? ("chat" as TaskActionType),
+        ...(t.resourceId ? { resourceId: t.resourceId } : {}),
+        ...(t.checklistItemIds?.length
+          ? { checklistItemIds: t.checklistItemIds, checklistItemId: t.checklistItemIds[0] }
+          : t.checklistItemId
+            ? { checklistItemId: t.checklistItemId, checklistItemIds: [t.checklistItemId] }
+            : {}),
+        ...(t.chatCriteria ? { chatCriteria: t.chatCriteria } : {}),
+        ...(t.scoreIncrement !== undefined ? { scoreIncrement: t.scoreIncrement } : {}),
       })),
       interruptions: scene.interruptions?.map((s) => ({ id: s.id, type: s.type, description: s.description })),
       paths,
@@ -322,12 +323,15 @@ export function transformScenario(
     };
   });
 
-  const globalTimers: GlobalTimer[] = (json.globalTimers ?? []).map((t) => ({
-    id: t.id,
-    name: t.name,
-    timeoutMs: t.timeout_ms,
-    targetStepId: t.target_id,
-  }));
+  const firstJsonTimer = (json.globalTimers ?? [])[0];
+  const globalTimer: GlobalTimer | undefined = firstJsonTimer
+    ? {
+        id: firstJsonTimer.id,
+        name: firstJsonTimer.name,
+        timeoutMs: firstJsonTimer.timeout_ms,
+        targetStepId: firstJsonTimer.target_id,
+      }
+    : undefined;
 
   return {
     title: json.title,
@@ -339,7 +343,7 @@ export function transformScenario(
       steps,
     },
     outcomeNodes,
-    globalTimers,
+    ...(globalTimer ? { globalTimer } : {}),
     personas,
     resources,
   };
@@ -359,6 +363,7 @@ export function transformModule(json: JsonModule): ModuleData {
     type: r.type,
     description: r.description,
     url: r.url,
+    ...(r.checkboxItems && r.checkboxItems.length > 0 ? { checkboxItems: r.checkboxItems } : {}),
   }));
 
   const scenarios: ScenarioData[] = json.scenarios

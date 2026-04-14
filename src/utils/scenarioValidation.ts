@@ -40,9 +40,8 @@ export function validateScenario(data: ScenarioData): ValidationWarning[] {
     for (const path of paths) {
       const hasConn = path.connections && path.connections.length > 0 && path.connections[0].targetNodeId;
       const hasTarget = !!path.targetStepId;
-      const isTimeout = path.timeoutMs !== undefined;
 
-      if (!hasConn && !hasTarget && !isTimeout) {
+      if (!hasConn && !hasTarget) {
         warnings.push({
           nodeId: step.id,
           nodeTitle: step.title,

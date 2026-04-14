@@ -13,7 +13,7 @@ interface ModalFlowConnectionsProps {
   steps: ScenarioStep[];
   outcomeNodes: OutcomeNode[];
   spotlightEdgeKeys?: Set<string>;
-  globalTimers?: GlobalTimer[];
+  globalTimer?: GlobalTimer;
 }
 
 type ConnectionType = "safe_path" | "partial_failure" | "critical_failure" | "step" | "timeout" | "global-timer";
@@ -44,7 +44,6 @@ interface Line {
   color: string;
   type: ConnectionType;
   timeoutLabel?: string;
-  interruptionType?: string;
   dpKey: string;
 }
 
@@ -61,7 +60,7 @@ const linesMatch = (a: Line[], b: Line[]): boolean => {
   );
 };
 
-const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTimers = [] }: ModalFlowConnectionsProps) => {
+const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTimer }: ModalFlowConnectionsProps) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [, setTick] = useState(0);
@@ -71,7 +70,6 @@ const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTi
       targetId: string;
       type: ConnectionType;
       timeoutLabel?: string;
-      interruptionType?: string;
     }>();
 
     for (const step of steps) {
@@ -86,27 +84,24 @@ const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTi
             type: conn.type as ConnectionType,
           });
         } else if (dp.targetStepId) {
-          const isTimeout = dp.timeoutMs !== undefined;
           map.set(dpKey, {
             targetId: dp.targetStepId,
-            type: isTimeout ? "timeout" : "step",
-            ...(isTimeout && dp.timeoutMs ? { timeoutLabel: formatTimeoutMs(dp.timeoutMs) } : {}),
-            ...(dp.interruptionType ? { interruptionType: dp.interruptionType } : {}),
+            type: "step",
           });
         }
       }
     }
 
-    for (const timer of globalTimers) {
-      map.set(`${timer.id}-0`, {
-        targetId: timer.targetStepId,
+    if (globalTimer) {
+      map.set(`${globalTimer.id}-0`, {
+        targetId: globalTimer.targetStepId,
         type: "global-timer",
-        timeoutLabel: formatTimeoutMs(timer.timeoutMs),
+        timeoutLabel: formatTimeoutMs(globalTimer.timeoutMs),
       });
     }
 
     return map;
-  }, [steps, globalTimers]);
+  }, [steps, globalTimer]);
 
   const measureRef = useRef(() => {});
   measureRef.current = () => {
@@ -157,7 +152,6 @@ const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTi
             color: getColor(info.type),
             type: info.type,
             timeoutLabel: info.timeoutLabel,
-            interruptionType: info.interruptionType,
             dpKey: dpId,
           });
     });
@@ -258,14 +252,9 @@ const ModalFlowConnections = ({ steps, outcomeNodes, spotlightEdgeKeys, globalTi
               markerEnd={`url(#modal-arrow-${line.type})`}
               opacity={lineOpacity}
             />
-            {(line.type === "timeout" || isGlobalTimer) && line.timeoutLabel && isSpotlit && (() => {
-              const isRadio = line.interruptionType === "radio";
-              const pillText = isGlobalTimer
-                ? `⏱ ${line.timeoutLabel}`
-                : isRadio
-                  ? `📻 ⏱ ${line.timeoutLabel}`
-                  : `⏱ ${line.timeoutLabel}`;
-              const pillW = isGlobalTimer ? 52 : isRadio ? 72 : 52;
+            {isGlobalTimer && line.timeoutLabel && isSpotlit && (() => {
+              const pillText = `⏱ ${line.timeoutLabel}`;
+              const pillW = 52;
               return (
                 <g transform={`translate(${midX}, ${midY})`}>
                   <rect

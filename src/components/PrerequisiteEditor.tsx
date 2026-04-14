@@ -282,8 +282,7 @@ export const PrerequisiteEditor = ({
     const newTask: ScenarioTask = {
       id: newId,
       label: text,
-      required: false,
-      hidden: true,
+      actionType: "chat",
     };
     const nextPrereq = serialize(setTaskPolarity(newId, draftPolarity, normalized));
     const prerequisiteValue: PrerequisiteCondition =
@@ -359,10 +358,7 @@ export const PrerequisiteEditor = ({
             return (
               <li
                 key={task.id}
-                className={cn(
-                  "rounded-lg border border-border/60 bg-background/95 p-2.5 pt-2 shadow-sm",
-                  task.hidden && "opacity-85",
-                )}
+                className="rounded-lg border border-border/60 bg-background/95 p-2.5 pt-2 shadow-sm"
               >
                 <div className="flex items-center justify-between gap-2 mb-2 min-h-[1.5rem]">
                   <span className="text-[11px] font-medium text-muted-foreground">
@@ -559,10 +555,7 @@ export const PrerequisiteEditor = ({
               return (
                 <li
                   key={task.id}
-                  className={cn(
-                    "rounded-lg border border-border/55 bg-background/70 p-2 space-y-2",
-                    task.hidden && "opacity-80",
-                  )}
+                  className="rounded-lg border border-border/55 bg-background/70 p-2 space-y-2"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1 space-y-1.5">

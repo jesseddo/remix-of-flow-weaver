@@ -188,26 +188,19 @@ function SceneCard({
           </div>
         )}
 
-        {step.tasks && step.tasks.filter((t) => !t.hidden).length > 0 && (
+        {step.tasks && step.tasks.length > 0 && (
           <div>
             <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">
-              Expected actions
+              Tasks
             </div>
             <ul className="space-y-1.5">
-              {step.tasks
-                .filter((t) => !t.hidden)
-                .map((task) => (
+              {step.tasks.map((task) => (
                   <li key={task.id} className="flex items-start gap-2.5">
-                    <div
-                      className={cn(
-                        "w-1.5 h-1.5 rounded-full mt-[5px] shrink-0",
-                        task.required ? "bg-zinc-300" : "bg-zinc-600"
-                      )}
-                    />
+                    <div className="w-1.5 h-1.5 rounded-full mt-[5px] shrink-0 bg-zinc-300" />
                     <span className="text-xs text-zinc-300 leading-relaxed">
                       {task.label}
-                      {!task.required && (
-                        <span className="text-zinc-600 ml-1.5">(optional)</span>
+                      {task.scoreIncrement != null && task.scoreIncrement > 0 && (
+                        <span className="text-emerald-500 ml-1.5">(+{task.scoreIncrement} pts)</span>
                       )}
                     </span>
                   </li>
@@ -343,14 +336,12 @@ function PathChoices({
   onSelect: (path: ScenarioPath) => void;
 }) {
   const allPaths = step.paths ?? [];
-  const interactivePaths = allPaths.filter((p) => !p.timeoutMs);
-  const timeoutPaths = allPaths.filter((p) => p.timeoutMs);
   const tasks = step.tasks ?? [];
 
   if (allPaths.length === 0) {
     return (
       <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center">
-        <p className="text-sm text-zinc-500">No paths defined for this step.</p>
+        <p className="text-sm text-zinc-500">No conditions defined for this step.</p>
       </div>
     );
   }
@@ -361,10 +352,10 @@ function PathChoices({
         Choose a path
       </div>
 
-      {interactivePaths.map((path) => {
+      {allPaths.map((path) => {
         const dest = getPathDestination(path, allSteps, outcomeNodes);
         const leadsLine = dest ? formatLeadsToLine(dest) : null;
-        const requiresLine = formatRequiresSummary(path.prerequisite, tasks);
+        const requiresLine = formatRequiresSummary(path.prerequisite, tasks, allSteps);
 
         const leadsToOutcome =
           !path.targetStepId && path.connections && path.connections.length > 0;
@@ -420,12 +411,6 @@ function PathChoices({
         );
       })}
 
-      {timeoutPaths.length > 0 && (
-        <div className="text-[10px] font-mono text-zinc-600 px-1 pt-0.5">
-          ⏱ {timeoutPaths.length} timeout path
-          {timeoutPaths.length > 1 ? "s" : ""} not selectable (auto-triggered)
-        </div>
-      )}
     </div>
   );
 }

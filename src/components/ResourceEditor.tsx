@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback } from "react";
-import { ScenarioResource } from "@/types/scenario";
+import { ScenarioResource, CheckboxItem } from "@/types/scenario";
 import {
   Plus, Pencil, Trash2, Check, X, FileText, ExternalLink,
-  Upload, File, Link, XCircle,
+  Upload, File, Link, XCircle, CheckSquare,
 } from "lucide-react";
 
 interface ResourceEditorProps {
@@ -18,6 +18,7 @@ const EMPTY_FORM: Omit<ScenarioResource, "id"> = {
   description: "",
   url: "",
   fileName: "",
+  checkboxItems: [],
 };
 
 const RESOURCE_TYPES = ["Document", "Video", "Checklist", "Form", "Reference", "Tool", "Other"];
@@ -218,6 +219,69 @@ const FileUploadZone = ({
   );
 };
 
+// ── Checkbox items editor ─────────────────────────────────────────
+const CheckboxItemsEditor = ({
+  items,
+  onChange,
+}: {
+  items: CheckboxItem[];
+  onChange: (items: CheckboxItem[]) => void;
+}) => {
+  const handleAdd = () => {
+    const newId = `cb-${Date.now()}`;
+    onChange([...items, { id: newId, name: "" }]);
+  };
+
+  const handleUpdate = (idx: number, name: string) => {
+    const next = items.map((item, i) => (i === idx ? { ...item, name } : item));
+    onChange(next);
+  };
+
+  const handleDelete = (idx: number) => {
+    onChange(items.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <FieldLabel>Checkbox Items</FieldLabel>
+        <span className="text-[8px] text-muted-foreground/40 italic">optional</span>
+      </div>
+      {items.length > 0 && (
+        <div className="space-y-1">
+          {items.map((item, idx) => (
+            <div key={item.id} className="flex items-center gap-1.5">
+              <CheckSquare className="w-3 h-3 shrink-0 text-muted-foreground/40" />
+              <input
+                type="text"
+                value={item.name}
+                onChange={(e) => handleUpdate(idx, e.target.value)}
+                placeholder={`Checkbox ${idx + 1} name…`}
+                className="flex-1 text-[11px] rounded-md border border-border/50 bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-primary/20"
+              />
+              <button
+                type="button"
+                onClick={() => handleDelete(idx)}
+                className="w-5 h-5 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground/40 hover:text-destructive transition-colors shrink-0"
+              >
+                <Trash2 className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={handleAdd}
+        className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-primary transition-colors"
+      >
+        <Plus className="w-3 h-3" />
+        Add checkbox item
+      </button>
+    </div>
+  );
+};
+
 // ── Resource form ─────────────────────────────────────────────────
 const ResourceForm = ({
   initial,
@@ -362,6 +426,13 @@ const ResourceForm = ({
           onUrlChange={set("url")}
         />
 
+        <CheckboxItemsEditor
+          items={fields.checkboxItems ?? []}
+          onChange={(items) =>
+            setFields((prev) => ({ ...prev, checkboxItems: items.length > 0 ? items : undefined }))
+          }
+        />
+
         <button
           onClick={() => canSave && onSave(id.trim(), fields)}
           disabled={!canSave}
@@ -415,6 +486,7 @@ const ResourceCard = ({
           description: resource.description ?? "",
           url: resource.url ?? "",
           fileName: resource.fileName ?? "",
+          checkboxItems: resource.checkboxItems ?? [],
         }}
         initialId={resource.id}
         onSave={(_id, fields) => {
@@ -487,6 +559,14 @@ const ResourceCard = ({
             <p className="text-[10px] text-muted-foreground/70 mt-1 leading-relaxed line-clamp-2">
               {resource.description}
             </p>
+          )}
+          {resource.checkboxItems && resource.checkboxItems.length > 0 && (
+            <div className="flex items-center gap-1 mt-1">
+              <CheckSquare className="w-2.5 h-2.5 text-muted-foreground/50" />
+              <span className="text-[9px] text-muted-foreground/60">
+                {resource.checkboxItems.length} checkbox{resource.checkboxItems.length !== 1 ? "es" : ""}
+              </span>
+            </div>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">

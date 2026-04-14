@@ -14,6 +14,7 @@ import {
   EvaluationCompetency,
   OutcomeNode,
   GlobalTimer,
+  TaskActionType,
 } from "@/types/scenario";
 import { stepEvaluationHasContent } from "@/data/evaluationCompetencies";
 
@@ -24,9 +25,12 @@ export interface UpdatePathPatch {
 
 export interface UpdateTaskPatch {
   label?: string;
-  required?: boolean;
-  hidden?: boolean;
-  prerequisite?: PrerequisiteCondition;
+  actionType?: TaskActionType;
+  resourceId?: string;
+  checklistItemId?: string;
+  checklistItemIds?: string[];
+  chatCriteria?: string;
+  scoreIncrement?: number;
 }
 
 export interface UpdatePersonaPatch {
@@ -38,6 +42,7 @@ export interface UpdateStepPatch {
   title?: string;
   description?: string;
   resource?: string;
+  messageDescription?: string;
   type?: NodeType;
 }
 
@@ -209,7 +214,8 @@ export function useScenarioEditor(
                       if (target.kind === "step") {
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
                         const { connections, ...rest } = path;
-                        return { ...rest, targetStepId: target.stepId };
+                        const stepObj = prev.scenarioNode.steps?.find((s) => s.id === target.stepId);
+                        return { ...rest, targetStepId: target.stepId, targetLabel: stepObj?.title ?? target.stepId };
                       } else {
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
                         const { targetStepId, ...rest } = path;
@@ -218,8 +224,37 @@ export function useScenarioEditor(
                           targetNodeId: target.nodeId,
                           type: target.type,
                         };
-                        return { ...rest, connections: [conn] };
+                        return { ...rest, connections: [conn], targetLabel: target.label };
                       }
+                    }),
+                  }
+                : step
+            ),
+          },
+        };
+      });
+      markDirty();
+    },
+    [markDirty, setDataAndNotify]
+  );
+
+  const clearPathTarget = useCallback(
+    (stepId: string, pathId: string) => {
+      setDataAndNotify((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          scenarioNode: {
+            ...prev.scenarioNode,
+            steps: prev.scenarioNode.steps?.map((step) =>
+              step.id === stepId
+                ? {
+                    ...step,
+                    paths: step.paths?.map((path) => {
+                      if (path.id !== pathId) return path;
+                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                      const { connections, targetStepId, targetLabel, ...rest } = path;
+                      return rest;
                     }),
                   }
                 : step
@@ -534,7 +569,6 @@ export function useScenarioEditor(
         position: { x: 60, y: 80 },
       },
       outcomeNodes: [],
-      globalTimers: [],
       personas: modulePersonas ?? [],
       resources: moduleResources ?? [],
     };
@@ -592,16 +626,58 @@ export function useScenarioEditor(
     markDirty();
   }, [markDirty, setDataAndNotify]);
 
+  const createStepAndLinkToPath = useCallback(
+    (fromStepId: string, pathId: string, nodeType: NodeType = "chat") => {
+      setDataAndNotify((prev) => {
+        if (!prev) return prev;
+        const stepNum = (prev.scenarioNode.steps?.length ?? 0) + 1;
+        const newStep: ScenarioStep = {
+          id: `step-${Date.now()}`,
+          title: `Step ${stepNum}`,
+          type: nodeType,
+          description: "",
+          tags: [],
+          flowType: "linear",
+          tasks: [],
+          paths: [],
+        };
+        return {
+          ...prev,
+          scenarioNode: {
+            ...prev.scenarioNode,
+            steps: [
+              ...(prev.scenarioNode.steps ?? []).map((step) =>
+                step.id === fromStepId
+                  ? {
+                      ...step,
+                      paths: step.paths?.map((p) => {
+                        if (p.id !== pathId) return p;
+                        const { connections, ...rest } = p;
+                        return { ...rest, targetStepId: newStep.id, targetLabel: newStep.title };
+                      }),
+                    }
+                  : step
+              ),
+              newStep,
+            ],
+          },
+        };
+      });
+      markDirty();
+    },
+    [markDirty, setDataAndNotify]
+  );
+
   const deleteStep = useCallback((stepId: string) => {
     setDataAndNotify((prev) => {
       if (!prev) return prev;
+      const deletedStep = prev.scenarioNode.steps?.find((s) => s.id === stepId);
       const steps = prev.scenarioNode.steps?.filter((s) => s.id !== stepId) ?? [];
       const cleaned = steps.map((step) => ({
         ...step,
         paths: step.paths?.map((p) => {
           if (p.targetStepId === stepId) {
-            const { targetStepId: _, ...rest } = p;
-            return rest;
+            return { ...p, targetLabel: p.targetLabel ?? deletedStep?.title ?? stepId };
           }
           return p;
         }),
@@ -615,15 +691,17 @@ export function useScenarioEditor(
     markDirty();
   }, [markDirty, selectedStepId, setDataAndNotify]);
 
-  const addOutcomeNode = useCallback((outcomeType: OutcomeType) => {
+  const addOutcomeNode = useCallback((outcomeType: OutcomeType, title?: string) => {
     setDataAndNotify((prev) => {
       if (!prev) return prev;
+      if (prev.outcomeNodes.some((o) => o.outcome === outcomeType)) return prev;
       const num = prev.outcomeNodes.length + 1;
+      const defaultTitle = outcomeType === "safe_path" ? `Success ${num}` :
+             outcomeType === "partial_failure" ? `Partial Failure ${num}` :
+             `Critical Failure ${num}`;
       const newOutcome: OutcomeNode = {
         id: `outcome-${Date.now()}`,
-        title: outcomeType === "safe_path" ? `Success ${num}` :
-               outcomeType === "partial_failure" ? `Partial Failure ${num}` :
-               `Critical Failure ${num}`,
+        title: title ?? defaultTitle,
         type: "chat",
         description: "",
         tags: [outcomeType === "safe_path" ? "Safe Outcome" :
@@ -640,21 +718,60 @@ export function useScenarioEditor(
     markDirty();
   }, [markDirty, setDataAndNotify]);
 
+  const createOutcomeAndLinkToPath = useCallback(
+    (stepId: string, pathId: string, outcomeType: OutcomeType, title: string) => {
+      setDataAndNotify((prev) => {
+        if (!prev) return prev;
+        if (prev.outcomeNodes.some((o) => o.outcome === outcomeType)) return prev;
+        const num = prev.outcomeNodes.length + 1;
+        const newOutcome: OutcomeNode = {
+          id: `outcome-${Date.now()}`,
+          title,
+          type: "chat",
+          description: "",
+          tags: [outcomeType === "safe_path" ? "Safe Outcome" :
+                 outcomeType === "partial_failure" ? "Partial Failure" :
+                 "Critical Failure"],
+          outcome: outcomeType,
+          position: { x: 800, y: 80 + (num - 1) * 300 },
+        };
+        const conn: StepConnection = {
+          label: title,
+          targetNodeId: newOutcome.id,
+          type: outcomeType,
+        };
+        return {
+          ...prev,
+          outcomeNodes: [...prev.outcomeNodes, newOutcome],
+          scenarioNode: {
+            ...prev.scenarioNode,
+            steps: prev.scenarioNode.steps?.map((step) =>
+              step.id === stepId
+                ? {
+                    ...step,
+                    paths: step.paths?.map((path) => {
+                      if (path.id !== pathId) return path;
+                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                      const { targetStepId, ...rest } = path;
+                      return { ...rest, connections: [conn], targetLabel: title };
+                    }),
+                  }
+                : step
+            ),
+          },
+        };
+      });
+      markDirty();
+    },
+    [markDirty, setDataAndNotify]
+  );
+
   const deleteOutcomeNode = useCallback((outcomeId: string) => {
     setDataAndNotify((prev) => {
       if (!prev) return prev;
-      const steps = (prev.scenarioNode.steps ?? []).map((step) => ({
-        ...step,
-        paths: step.paths?.map((p) => {
-          if (p.connections?.some((c) => c.targetNodeId === outcomeId)) {
-            return { ...p, connections: p.connections?.filter((c) => c.targetNodeId !== outcomeId) };
-          }
-          return p;
-        }),
-      }));
       return {
         ...prev,
-        scenarioNode: { ...prev.scenarioNode, steps },
+        scenarioNode: prev.scenarioNode,
         outcomeNodes: prev.outcomeNodes.filter((o) => o.id !== outcomeId),
       };
     });
@@ -672,36 +789,24 @@ export function useScenarioEditor(
     markDirty();
   }, [markDirty, setDataAndNotify]);
 
-  const addGlobalTimer = useCallback(() => {
+  const setGlobalTimer = useCallback((timer: GlobalTimer | undefined) => {
     setDataAndNotify((prev) => {
       if (!prev) return prev;
-      const num = prev.globalTimers.length + 1;
-      const firstStepId = prev.scenarioNode.steps?.[0]?.id ?? "";
-      const timer: GlobalTimer = {
-        id: `timer-${Date.now()}`,
-        name: `Timer ${num}`,
-        timeoutMs: 120000,
-        targetStepId: firstStepId,
-      };
-      return { ...prev, globalTimers: [...prev.globalTimers, timer] };
+      if (timer) {
+        return { ...prev, globalTimer: timer };
+      }
+      const { globalTimer: _, ...rest } = prev;
+      return rest as ScenarioData;
     });
     markDirty();
   }, [markDirty, setDataAndNotify]);
 
-  const deleteGlobalTimer = useCallback((timerId: string) => {
+  const updateGlobalTimer = useCallback((patch: Partial<Pick<GlobalTimer, "name" | "timeoutMs" | "targetStepId">>) => {
     setDataAndNotify((prev) => {
-      if (!prev) return prev;
-      return { ...prev, globalTimers: prev.globalTimers.filter((t) => t.id !== timerId) };
-    });
-    markDirty();
-  }, [markDirty, setDataAndNotify]);
-
-  const updateGlobalTimer = useCallback((id: string, patch: Partial<Pick<GlobalTimer, "name" | "timeoutMs" | "targetStepId">>) => {
-    setDataAndNotify((prev) => {
-      if (!prev) return prev;
+      if (!prev?.globalTimer) return prev;
       return {
         ...prev,
-        globalTimers: prev.globalTimers.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+        globalTimer: { ...prev.globalTimer, ...patch },
       };
     });
     markDirty();
@@ -717,6 +822,7 @@ export function useScenarioEditor(
     addPath,
     deletePath,
     setPathTarget,
+    clearPathTarget,
     updateTask,
     addTask,
     addPathConditionTask,
@@ -735,12 +841,13 @@ export function useScenarioEditor(
     updateTitle,
     updateDescription,
     addNewStep,
+    createStepAndLinkToPath,
     deleteStep,
     addOutcomeNode,
+    createOutcomeAndLinkToPath,
     deleteOutcomeNode,
     updateOutcomeNode,
-    addGlobalTimer,
-    deleteGlobalTimer,
+    setGlobalTimer,
     updateGlobalTimer,
   };
 }

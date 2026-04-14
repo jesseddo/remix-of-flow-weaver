@@ -23,6 +23,7 @@ export function exportToJson(
     if (step.persona !== undefined) scene.persona = step.persona;
     if (step.personaAdherence !== undefined) scene.personaAdherence = step.personaAdherence;
     if (step.resource !== undefined) scene.resource = step.resource;
+    if (step.messageDescription !== undefined) scene.messageDescription = step.messageDescription;
     if ("evaluation" in step) {
       const ev = step.evaluation;
       scene.evaluation =
@@ -38,24 +39,20 @@ export function exportToJson(
       }
     }
 
-    // Full task sync — handles add, delete, reorder, and field edits
     if (step.tasks !== undefined) {
       scene.tasks = step.tasks.map((task) => ({
         id: task.id,
         label: task.label,
         ...(task.shortLabel?.trim() ? { shortLabel: task.shortLabel.trim() } : {}),
-        required: task.required,
-        ...(task.hidden !== undefined ? { hidden: task.hidden } : {}),
-        ...(task.type ? { type: task.type } : {}),
-        ...(task.tool ? { tool: task.tool } : {}),
-        ...(task.prerequisite !== undefined && task.prerequisite !== ""
-          ? { prerequisite: task.prerequisite }
-          : {}),
+        actionType: task.actionType,
+        ...(task.resourceId ? { resourceId: task.resourceId } : {}),
+        ...((task.checklistItemIds?.length ?? 0) > 0 ? { checklistItemIds: task.checklistItemIds } : {}),
+        ...(task.checklistItemId ? { checklistItemId: task.checklistItemId } : {}),
+        ...(task.chatCriteria?.trim() ? { chatCriteria: task.chatCriteria.trim() } : {}),
+        ...(task.scoreIncrement !== undefined ? { scoreIncrement: task.scoreIncrement } : {}),
       }));
     }
 
-    // Full path sync — handles add, delete, label/prerequisite edits.
-    // Reconstructs target_id from the ScenarioPath's connections or targetStepId.
     if (step.paths !== undefined) {
       scene.paths = step.paths.map((path) => {
         const targetId =
@@ -65,9 +62,6 @@ export function exportToJson(
           description: path.label,
           prerequisite: path.prerequisite,
           target_id: targetId,
-          ...(path.timeoutMs !== undefined
-            ? { timeout_ms: path.timeoutMs }
-            : {}),
         };
       });
     }
@@ -121,19 +115,19 @@ function stepToJsonScene(step: ScenarioStep) {
     ...(step.persona ? { persona: step.persona } : {}),
     ...(step.personaAdherence ? { personaAdherence: step.personaAdherence } : {}),
     ...(step.resource ? { resource: step.resource } : {}),
+    ...(step.messageDescription?.trim() ? { messageDescription: step.messageDescription.trim() } : {}),
     ...(step.tasks && step.tasks.length > 0
       ? {
           tasks: step.tasks.map((t) => ({
             id: t.id,
             label: t.label,
             ...(t.shortLabel?.trim() ? { shortLabel: t.shortLabel.trim() } : {}),
-            required: t.required,
-            ...(t.hidden !== undefined ? { hidden: t.hidden } : {}),
-            ...(t.type ? { type: t.type } : {}),
-            ...(t.tool ? { tool: t.tool } : {}),
-            ...(t.prerequisite !== undefined && t.prerequisite !== ""
-              ? { prerequisite: t.prerequisite }
-              : {}),
+            actionType: t.actionType,
+            ...(t.resourceId ? { resourceId: t.resourceId } : {}),
+            ...((t.checklistItemIds?.length ?? 0) > 0 ? { checklistItemIds: t.checklistItemIds } : {}),
+            ...(t.checklistItemId ? { checklistItemId: t.checklistItemId } : {}),
+            ...(t.chatCriteria?.trim() ? { chatCriteria: t.chatCriteria.trim() } : {}),
+            ...(t.scoreIncrement !== undefined ? { scoreIncrement: t.scoreIncrement } : {}),
           })),
         }
       : {}),
@@ -145,7 +139,6 @@ function stepToJsonScene(step: ScenarioStep) {
             prerequisite: p.prerequisite,
             target_id:
               p.connections?.[0]?.targetNodeId ?? p.targetStepId ?? "",
-            ...(p.timeoutMs !== undefined ? { timeout_ms: p.timeoutMs } : {}),
           })),
         }
       : {}),
@@ -179,14 +172,14 @@ export function scenarioDataToJson(data: ScenarioData): JsonScenario {
     description: data.scenarioNode.description ?? "",
     status: "prototype",
     version: "V3",
-    ...(data.globalTimers.length > 0
+    ...(data.globalTimer
       ? {
-          globalTimers: data.globalTimers.map((t) => ({
-            id: t.id,
-            name: t.name,
-            timeout_ms: t.timeoutMs,
-            target_id: t.targetStepId,
-          })),
+          globalTimers: [{
+            id: data.globalTimer.id,
+            name: data.globalTimer.name,
+            timeout_ms: data.globalTimer.timeoutMs,
+            target_id: data.globalTimer.targetStepId,
+          }],
         }
       : {}),
     ...(data.personas.length > 0
@@ -206,6 +199,7 @@ export function scenarioDataToJson(data: ScenarioData): JsonScenario {
             type: r.type,
             ...(r.description ? { description: r.description } : {}),
             ...(r.url ? { url: r.url } : {}),
+            ...(r.checkboxItems && r.checkboxItems.length > 0 ? { checkboxItems: r.checkboxItems } : {}),
           })),
         }
       : {}),
@@ -245,6 +239,7 @@ export function moduleDataToJson(mod: ModuleData): JsonModule {
             type: r.type,
             ...(r.description ? { description: r.description } : {}),
             ...(r.url ? { url: r.url } : {}),
+            ...(r.checkboxItems && r.checkboxItems.length > 0 ? { checkboxItems: r.checkboxItems } : {}),
           })),
         }
       : {}),

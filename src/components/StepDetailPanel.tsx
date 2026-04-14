@@ -1,28 +1,22 @@
-import { useState, useEffect, type MouseEvent } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ScenarioStep, ScenarioTask, ScenarioPath, OutcomeNode, PrerequisiteCondition, Persona, ScenarioResource,
+  TASK_ACTION_TYPES, TaskActionType, CheckboxItem,
 } from "@/types/scenario";
+import type { OutcomeType } from "@/types/scenario";
 import {
   UpdatePathPatch, UpdateTaskPatch, UpdatePersonaPatch, UpdateStepPatch, PathTarget, UpdateEvaluationPatch,
 } from "@/hooks/useScenarioEditor";
 import { PrerequisiteEditor } from "./PrerequisiteEditor";
 import { PrerequisiteDisplay } from "./PrerequisiteDisplay";
+import { ConditionCard } from "./ConditionCard";
 import { EVALUATION_COMPETENCIES } from "@/data/evaluationCompetencies";
-import {
-  formatAuthoringConsequenceLine,
-  formatConditionBullets,
-  getOutcomeChunk,
-  getPathBranchTone,
-  getPathDestination,
-  type BranchTone,
-} from "@/utils/pathCausality";
 import { cn } from "@/lib/utils";
 import {
   MessageSquare, Radio, FileText, Video, X,
-  ChevronRight, AlertTriangle, CheckCircle2, XCircle,
-  Plus, Trash2, Pencil, UserPlus,
+  AlertTriangle, CheckCircle2, XCircle,
+  Plus, Trash2, UserPlus, ChevronDown, Check,
 } from "lucide-react";
-import type { OutcomeType } from "@/types/scenario";
 
 interface StepDetailPanelProps {
   step: ScenarioStep | null;
@@ -37,16 +31,13 @@ interface StepDetailPanelProps {
   onDeletePath: (stepId: string, pathId: string) => void;
   onUpdateTask: (stepId: string, taskId: string, patch: UpdateTaskPatch) => void;
   onAddTask: (stepId: string, task: ScenarioTask) => void;
-  onAddPathCondition: (
-    stepId: string,
-    pathId: string,
-    task: ScenarioTask,
-    prerequisite: PrerequisiteCondition,
-  ) => void;
   onDeleteTask: (stepId: string, taskId: string) => void;
   onUpdatePersona: (stepId: string, patch: UpdatePersonaPatch) => void;
   onUpdateStep: (stepId: string, patch: UpdateStepPatch) => void;
   onSetPathTarget: (stepId: string, pathId: string, target: PathTarget) => void;
+  onClearPathTarget: (stepId: string, pathId: string) => void;
+  onCreateOutcomeAndLink: (stepId: string, pathId: string, outcomeType: OutcomeType, title: string) => void;
+  onCreateStepAndLink: (fromStepId: string, pathId: string) => void;
   onUpdateEvaluation: (stepId: string, patch: UpdateEvaluationPatch) => void;
   onClearEvaluation: (stepId: string) => void;
   onAddPersonaToCatalog?: (persona: Persona) => void;
@@ -232,38 +223,150 @@ const PrereqSection = ({
   );
 };
 
+// ── Action type label helper ─────────────────────────────────────
+const actionTypeLabel = (t: TaskActionType): string =>
+  TASK_ACTION_TYPES.find((a) => a.value === t)?.label ?? t;
+
+const isDocumentAction = (t: TaskActionType): boolean =>
+  t === "request_document" ||
+  t === "review_document" ||
+  t === "review_document_checklist_checked" ||
+  t === "review_document_checklist_unchecked" ||
+  t === "approve_document";
+
+const isChecklistAction = (t: TaskActionType): boolean =>
+  t === "review_document_checklist_checked" ||
+  t === "review_document_checklist_unchecked";
+
+// ── CheckboxMultiSelect ──────────────────────────────────────────
+const CheckboxMultiSelect = ({
+  checkboxes,
+  selectedIds,
+  onToggle,
+}: {
+  checkboxes: CheckboxItem[];
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const selectedLabels = selectedIds
+    .map((id) => checkboxes.find((cb) => cb.id === id))
+    .filter(Boolean)
+    .map((cb) => cb!.name || cb!.id);
+
+  return (
+    <div ref={containerRef} className="flex-1 relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full text-left text-[11px] rounded-md border border-border/50 bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer flex items-center gap-1 min-h-[1.75rem]"
+      >
+        <span className="flex-1 truncate">
+          {selectedLabels.length > 0
+            ? selectedLabels.join(", ")
+            : <span className="text-muted-foreground/50">Select checkboxes...</span>}
+        </span>
+        <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground/40" />
+      </button>
+
+      {selectedIds.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {selectedIds.map((id) => {
+            const cb = checkboxes.find((c) => c.id === id);
+            return (
+              <span
+                key={id}
+                className="inline-flex items-center gap-1 rounded-full bg-foreground/[0.08] border border-foreground/[0.12] pl-2 pr-1 py-0.5 text-[10px] font-medium text-foreground whitespace-nowrap"
+              >
+                {cb?.name || id}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggle(id);
+                  }}
+                  className="shrink-0 w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-foreground/15 transition-colors"
+                >
+                  <X className="w-2 h-2" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {open && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto rounded-lg border border-border/60 bg-popover shadow-lg">
+          {checkboxes.map((cb) => {
+            const isSelected = selectedIds.includes(cb.id);
+            return (
+              <button
+                key={cb.id}
+                type="button"
+                onClick={() => onToggle(cb.id)}
+                className={cn(
+                  "w-full text-left px-3 py-1.5 text-[11px] hover:bg-accent/50 transition-colors flex items-center gap-2",
+                  isSelected && "bg-accent/30",
+                )}
+              >
+                <span className={cn(
+                  "w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors",
+                  isSelected
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : "border-border/60 bg-background",
+                )}>
+                  {isSelected && <Check className="w-2.5 h-2.5" />}
+                </span>
+                <span className="truncate">{cb.name || cb.id}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Task row ─────────────────────────────────────────────────────
 const TaskRow = ({
   task,
   stepId,
-  stepIndex,
-  allTasks,
+  resources,
   onUpdateTask,
-  onAddTask,
   onDeleteTask,
   autoFocus,
   onAutoFocusDone,
 }: {
   task: ScenarioTask;
   stepId: string;
-  stepIndex: number;
-  allTasks: ScenarioTask[];
+  resources: ScenarioResource[];
   onUpdateTask: (stepId: string, taskId: string, patch: UpdateTaskPatch) => void;
-  onAddTask: (stepId: string, task: ScenarioTask) => void;
   onDeleteTask: (stepId: string, taskId: string) => void;
   autoFocus?: boolean;
   onAutoFocusDone?: () => void;
 }) => (
   <div
-    className="mx-4 mb-2 rounded-lg overflow-hidden"
+    className="mx-4 mb-2 rounded-lg"
     style={{ border: "1px solid hsl(var(--border))" }}
   >
     {/* Header */}
     <div
-      className="px-3 py-2 flex items-start gap-2"
+      className="px-3 py-2 flex items-start gap-2 rounded-t-lg"
       style={{ background: "hsl(var(--secondary) / 0.4)" }}
     >
-      {/* ID badge — hidden for auto-generated IDs */}
       {!task.id.startsWith("task-s") && (
         <span
           className="text-[8px] font-mono font-semibold shrink-0 px-1 py-0.5 rounded mt-0.5"
@@ -281,465 +384,136 @@ const TaskRow = ({
           onBlur={onAutoFocusDone}
         />
       </div>
-      <div className="flex items-center gap-1 shrink-0 mt-0.5">
-        <TogglePill
-          active={task.required}
-          label="Required"
-          activeColor="hsl(220, 70%, 52%)"
-          onClick={() => onUpdateTask(stepId, task.id, { required: !task.required })}
-        />
-        <TogglePill
-          active={task.hidden ?? false}
-          label="Hidden"
-          activeColor="hsl(260, 60%, 52%)"
-          title="Hidden tasks are tracked by the system but not shown to the learner"
-          onClick={() => onUpdateTask(stepId, task.id, { hidden: !(task.hidden ?? false) })}
-        />
-        <DeleteButton
-          onClick={() => onDeleteTask(stepId, task.id)}
-          title="Delete task"
-        />
-      </div>
+      <DeleteButton
+        onClick={() => onDeleteTask(stepId, task.id)}
+        title="Delete task"
+      />
     </div>
 
-    {/* Prerequisite — collapsible */}
-    <PrereqSection
-      prereq={task.prerequisite}
-      tasks={allTasks.filter((t) => t.id !== task.id)}
-      onChange={(updated) => onUpdateTask(stepId, task.id, { prerequisite: updated })}
-      stepId={stepId}
-      stepIndex={stepIndex}
-      onAddTask={onAddTask}
-      onUpdateTask={onUpdateTask}
-      excludeTaskIds={[task.id]}
-    />
+    {/* Action type + contextual fields */}
+    <div className="px-3 py-2 space-y-2" style={{ borderTop: "1px solid hsl(var(--border) / 0.4)" }}>
+      <div>
+        <div className="flex items-center gap-2">
+          <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/50 shrink-0 w-20">
+            Action
+          </label>
+          <select
+            value={task.actionType}
+            onChange={(e) => onUpdateTask(stepId, task.id, { actionType: e.target.value as TaskActionType })}
+            className="flex-1 text-[11px] rounded-md border border-border/50 bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
+            title={TASK_ACTION_TYPES.find((a) => a.value === task.actionType)?.description}
+          >
+            {TASK_ACTION_TYPES.map((a) => (
+              <option key={a.value} value={a.value} title={a.description}>{a.label}</option>
+            ))}
+          </select>
+        </div>
+        <p className="ml-20 pl-2 mt-1 text-[9px] text-muted-foreground/50 italic leading-snug">
+          {TASK_ACTION_TYPES.find((a) => a.value === task.actionType)?.description}
+        </p>
+      </div>
+
+      {/* Document selector — for document-based actions */}
+      {isDocumentAction(task.actionType) && (
+        <div className="flex items-center gap-2">
+          <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/50 shrink-0 w-20">
+            Document
+          </label>
+          <select
+            value={task.resourceId ?? ""}
+            onChange={(e) => onUpdateTask(stepId, task.id, { resourceId: e.target.value || undefined })}
+            className="flex-1 text-[11px] rounded-md border border-border/50 bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
+          >
+            <option value="">— Select document —</option>
+            {resources.map((r) => (
+              <option key={r.id} value={r.id}>{r.title}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Checkbox items — multi-select for checklist actions */}
+      {isChecklistAction(task.actionType) && (() => {
+        const selectedResource = task.resourceId
+          ? resources.find((r) => r.id === task.resourceId)
+          : undefined;
+        const checkboxes = selectedResource?.checkboxItems ?? [];
+        const selectedIds: string[] = task.checklistItemIds
+          ?? (task.checklistItemId ? [task.checklistItemId] : []);
+
+        const toggleItem = (id: string) => {
+          const next = selectedIds.includes(id)
+            ? selectedIds.filter((x) => x !== id)
+            : [...selectedIds, id];
+          onUpdateTask(stepId, task.id, {
+            checklistItemIds: next.length > 0 ? next : undefined,
+            checklistItemId: next[0] ?? undefined,
+          });
+        };
+
+        return (
+          <div className="flex items-start gap-2">
+            <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/50 shrink-0 w-20 mt-1.5">
+              Checkbox
+            </label>
+            {checkboxes.length > 0 ? (
+              <CheckboxMultiSelect
+                checkboxes={checkboxes}
+                selectedIds={selectedIds}
+                onToggle={toggleItem}
+              />
+            ) : (
+              <span className="flex-1 text-[10px] text-muted-foreground/50 italic py-1">
+                {task.resourceId
+                  ? "No checkboxes defined on this document"
+                  : "Select a document first"}
+              </span>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Chat criteria — for chat actions */}
+      {task.actionType === "chat" && (
+        <div className="flex items-start gap-2">
+          <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/50 shrink-0 w-20 mt-1">
+            AI Instructions
+          </label>
+          <textarea
+            value={task.chatCriteria ?? ""}
+            onChange={(e) => onUpdateTask(stepId, task.id, { chatCriteria: e.target.value || undefined })}
+            placeholder='Please write AI instruction, for example: "If learner asks the bleeder valve to be open, then this task is accomplished, and Tom responds with OK, opened bleeder valve, zero energy verified"'
+            rows={2}
+            className="flex-1 text-[11px] rounded-md border border-border/50 bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-primary/20 resize-none italic placeholder:italic"
+          />
+        </div>
+      )}
+
+      {/* Score increment */}
+      <div className="flex items-center gap-2">
+        <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/50 shrink-0 w-20">
+          Score +
+        </label>
+        <input
+          type="number"
+          min={0}
+          value={task.scoreIncrement ?? ""}
+          onChange={(e) => {
+            const val = e.target.value === "" ? undefined : parseInt(e.target.value, 10);
+            onUpdateTask(stepId, task.id, { scoreIncrement: val });
+          }}
+          placeholder="0"
+          className="w-20 text-[11px] rounded-md border border-border/50 bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-primary/20"
+        />
+        <span className="text-[9px] text-muted-foreground/50 italic">points when achieved</span>
+      </div>
+    </div>
   </div>
 );
 
-const BRANCH_TONE_UI: Record<
-  BranchTone,
-  {
-    border: string;
-    bar: string;
-    bg: string;
-    head: string;
-    badge: string;
-    Icon: typeof CheckCircle2;
-    /** Sketch-style header label (lowercase). */
-    badgeText: string;
-  }
-> = {
-  safe: {
-    border: "border-emerald-600/55",
-    bar: "border-l-emerald-600",
-    bg: "bg-emerald-50/95 dark:bg-emerald-950/40",
-    head: "bg-emerald-600/18 dark:bg-emerald-600/28",
-    badge: "text-emerald-900 dark:text-emerald-100",
-    Icon: CheckCircle2,
-    badgeText: "continue",
-  },
-  risk: {
-    border: "border-red-600/55",
-    bar: "border-l-red-600",
-    bg: "bg-red-50/95 dark:bg-red-950/40",
-    head: "bg-red-600/18 dark:bg-red-600/26",
-    badge: "text-red-900 dark:text-red-100",
-    Icon: XCircle,
-    badgeText: "unsafe",
-  },
-  caution: {
-    border: "border-amber-500/55",
-    bar: "border-l-amber-500",
-    bg: "bg-amber-50/90 dark:bg-amber-950/35",
-    head: "bg-amber-500/18 dark:bg-amber-600/24",
-    badge: "text-amber-950 dark:text-amber-100",
-    Icon: AlertTriangle,
-    badgeText: "caution",
-  },
-  neutral: {
-    border: "border-slate-400/50 dark:border-slate-500/50",
-    bar: "border-l-slate-500 dark:border-l-slate-400",
-    bg: "bg-slate-50/90 dark:bg-slate-900/55",
-    head: "bg-slate-500/12 dark:bg-slate-600/22",
-    badge: "text-slate-800 dark:text-slate-100",
-    Icon: ChevronRight,
-    badgeText: "continue",
-  },
-};
+// PathRow / AddPathForm removed — replaced by ConditionCard
+// (see ConditionCard.tsx)
 
-// ── Path row (selectable branch card: scan vs edit) ───────────────
-const PathRow = ({
-  path,
-  step,
-  stepIndex,
-  allSteps,
-  outcomeNodes,
-  onUpdatePath,
-  onDeletePath,
-  onSetPathTarget,
-  onAddTask,
-  onAddPathCondition,
-  onUpdateTask,
-}: {
-  path: ScenarioPath;
-  step: ScenarioStep;
-  stepIndex: number;
-  allSteps: ScenarioStep[];
-  outcomeNodes: OutcomeNode[];
-  onUpdatePath: (stepId: string, pathId: string, patch: UpdatePathPatch) => void;
-  onDeletePath: (stepId: string, pathId: string) => void;
-  onSetPathTarget: (stepId: string, pathId: string, target: PathTarget) => void;
-  onAddTask: (stepId: string, task: ScenarioTask) => void;
-  onAddPathCondition: (
-    stepId: string,
-    pathId: string,
-    task: ScenarioTask,
-    prerequisite: PrerequisiteCondition,
-  ) => void;
-  onUpdateTask: (stepId: string, taskId: string, patch: UpdateTaskPatch) => void;
-}) => {
-  const isTimeout = path.timeoutMs !== undefined;
-  const currentTargetId = path.connections?.[0]?.targetNodeId ?? path.targetStepId ?? "";
-  const [editingTarget, setEditingTarget] = useState(false);
-  const [cardMode, setCardMode] = useState<"scan" | "edit">(() =>
-    !path.label?.trim() || !currentTargetId ? "edit" : "scan",
-  );
-
-  const availableTargets: Array<{ id: string; label: string; group: string }> = [
-    ...allSteps
-      .filter((s) => s.id !== step.id)
-      .map((s) => ({
-        id: s.id,
-        label: `Step ${allSteps.indexOf(s) + 1}: ${s.title}`,
-        group: "Steps",
-      })),
-    ...outcomeNodes.map((o) => ({
-      id: o.id,
-      label: o.title,
-      group: "Outcomes",
-    })),
-  ];
-
-  const dest = getPathDestination(path, allSteps, outcomeNodes);
-  const outcomeChunk = getOutcomeChunk(dest);
-  const consequenceColor =
-    dest?.kind === "outcome" && dest.outcomeType
-      ? outcomeStyles[dest.outcomeType].color
-      : undefined;
-
-  const toneKey: BranchTone = isTimeout ? "caution" : getPathBranchTone(path);
-  const tone = BRANCH_TONE_UI[toneKey];
-  const ToneIcon = tone.Icon;
-  const conditionBullets = formatConditionBullets(path.prerequisite, step.tasks ?? []);
-
-  const stop = (e: MouseEvent) => e.stopPropagation();
-
-  const scanActivate = () => setCardMode("edit");
-
-  return (
-    <div
-      className={cn(
-        "min-w-0 rounded-xl border-2 border-l-[6px] shadow-sm overflow-hidden transition-[box-shadow,ring] flex flex-col",
-        tone.border,
-        tone.bar,
-        tone.bg,
-        cardMode === "edit" && "ring-2 ring-primary/35 ring-offset-2 ring-offset-background",
-      )}
-    >
-      {/* Header — sketch: icon + path type */}
-      <div
-        className={cn(
-          "flex items-center justify-between gap-2 px-3 py-2 border-b border-black/5 dark:border-white/10",
-          tone.head,
-        )}
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <ToneIcon className={cn("w-4 h-4 shrink-0", tone.badge)} strokeWidth={2.25} />
-          <span className={cn("text-[12px] font-semibold tracking-tight lowercase", tone.badge)}>
-            {isTimeout ? "timeout" : tone.badgeText}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0" onClick={stop}>
-          {cardMode === "edit" && (
-            <button
-              type="button"
-              onClick={() => setCardMode("scan")}
-              className="text-[9px] font-semibold px-2 py-1 rounded-md bg-background/80 border border-border/60 hover:bg-background"
-            >
-              Done
-            </button>
-          )}
-          <DeleteButton onClick={() => onDeletePath(step.id, path.id)} title="Delete branch" />
-        </div>
-      </div>
-
-      {cardMode === "scan" ? (
-        <button
-          type="button"
-          onClick={scanActivate}
-          className="w-full text-left p-3 space-y-3 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
-        >
-          <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-2 shadow-sm">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">learner choice:</div>
-            <p className="text-[12px] font-semibold text-foreground leading-snug">
-              {path.label?.trim() || (
-                <span className="text-muted-foreground/50 italic font-normal">Empty — tap to edit</span>
-              )}
-            </p>
-          </div>
-
-          <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-2 shadow-sm">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">condition:</div>
-            <ul className="space-y-1">
-              {conditionBullets.map((line, i) => (
-                <li
-                  key={i}
-                  className="text-[11px] text-foreground/90 leading-snug flex gap-1.5"
-                >
-                  <span className="text-muted-foreground shrink-0">→</span>
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-2 shadow-sm">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">outcome:</div>
-            <div className="space-y-0.5">
-              <p
-                className="text-[12px] font-semibold leading-snug flex gap-1.5"
-                style={consequenceColor ? { color: consequenceColor } : undefined}
-              >
-                <span className="text-muted-foreground shrink-0">→</span>
-                <span>{outcomeChunk.title}</span>
-              </p>
-              {outcomeChunk.severity && (
-                <p className="text-[10px] font-medium pl-5 text-muted-foreground/80">
-                  {outcomeChunk.severity}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 pt-1 text-[9px] text-muted-foreground/55">
-            <Pencil className="w-3 h-3 shrink-0" />
-            <span>Click anywhere on this card to edit</span>
-          </div>
-        </button>
-      ) : (
-        <div className="p-3 space-y-3 bg-muted/15" onClick={stop}>
-          <section className="rounded-lg border border-border/70 bg-card text-card-foreground shadow-sm px-3 py-2.5 space-y-2">
-            <div className="text-[11px] font-medium text-muted-foreground">learner choice:</div>
-            <InlineInput
-              value={path.label}
-              onChange={(v) => onUpdatePath(step.id, path.id, { label: v })}
-              placeholder="What the learner does or decides…"
-              className="text-[12px]"
-            />
-          </section>
-
-          <section className="rounded-lg border border-border/70 bg-card text-card-foreground shadow-sm px-3 py-2.5 space-y-2">
-            <div className="text-[11px] font-medium text-muted-foreground">condition:</div>
-            <PrerequisiteEditor
-              layout="paper"
-              radioScope={path.id}
-              pathId={path.id}
-              prerequisite={path.prerequisite}
-              tasks={step.tasks ?? []}
-              onChange={(updated) => onUpdatePath(step.id, path.id, { prerequisite: updated ?? "" })}
-              stepId={step.id}
-              stepIndex={stepIndex}
-              onAddTask={onAddTask}
-              onAddPathCondition={onAddPathCondition}
-              onUpdateTask={onUpdateTask}
-            />
-          </section>
-
-          <section className="rounded-lg border border-border/70 bg-card text-card-foreground shadow-sm px-3 py-2.5 space-y-2">
-            <div className="text-[11px] font-medium text-muted-foreground">outcome:</div>
-            {editingTarget ? (
-              <select
-                autoFocus
-                value={currentTargetId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  if (!id) return;
-                  const outcome = outcomeNodes.find((o) => o.id === id);
-                  if (outcome) {
-                    onSetPathTarget(step.id, path.id, {
-                      kind: "outcome",
-                      nodeId: id,
-                      label: outcome.title,
-                      type: outcome.outcome,
-                    });
-                  } else {
-                    onSetPathTarget(step.id, path.id, { kind: "step", stepId: id });
-                  }
-                  setEditingTarget(false);
-                }}
-                onBlur={() => setEditingTarget(false)}
-                className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="">Select target…</option>
-                <optgroup label="Steps">
-                  {availableTargets
-                    .filter((t) => t.group === "Steps")
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                </optgroup>
-                <optgroup label="Outcomes">
-                  {availableTargets
-                    .filter((t) => t.group === "Outcomes")
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                </optgroup>
-              </select>
-            ) : (
-              <div className="space-y-1">
-                <p
-                  className="text-[12px] font-semibold leading-snug"
-                  style={consequenceColor ? { color: consequenceColor } : undefined}
-                >
-                  {formatAuthoringConsequenceLine(dest)}
-                </p>
-                {!isTimeout && (
-                  <button
-                    type="button"
-                    onClick={() => setEditingTarget(true)}
-                    className="text-[9px] text-muted-foreground/50 hover:text-primary"
-                  >
-                    Change destination
-                  </button>
-                )}
-              </div>
-            )}
-          </section>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ── Add Decision Point form ──────────────────────────────────────
-const AddPathForm = ({
-  step, stepIndex, allSteps, outcomeNodes, onAdd, onCancel,
-}: {
-  step: ScenarioStep;
-  stepIndex: number;
-  allSteps: ScenarioStep[];
-  outcomeNodes: OutcomeNode[];
-  onAdd: (path: ScenarioPath) => void;
-  onCancel: () => void;
-}) => {
-  const [label, setLabel] = useState("");
-  const [targetId, setTargetId] = useState("");
-
-  const availableTargets: Array<{ id: string; label: string; group: string }> = [
-    ...allSteps
-      .filter((s) => s.id !== step.id)
-      .map((s) => ({
-        id: s.id,
-        label: `Step ${allSteps.indexOf(s) + 1}: ${s.title}`,
-        group: "Steps",
-      })),
-    ...outcomeNodes.map((o) => ({
-      id: o.id,
-      label: o.title,
-      group: "Outcomes",
-    })),
-  ];
-
-  const handleAdd = () => {
-    if (!label.trim() || !targetId) return;
-    const outcome = outcomeNodes.find((o) => o.id === targetId);
-    const newPath: ScenarioPath = {
-      id: `path-${stepIndex + 1}-new-${Date.now()}`,
-      label: label.trim(),
-      prerequisite: "",
-      ...(outcome
-        ? { connections: [{ label: label.trim(), targetNodeId: targetId, type: outcome.outcome }] }
-        : { targetStepId: targetId }),
-    };
-    onAdd(newPath);
-  };
-
-  return (
-    <div
-      className="mx-4 mb-3 rounded-lg overflow-hidden"
-      style={{ border: "1px dashed hsl(var(--border))", background: "hsl(var(--secondary) / 0.2)" }}
-    >
-      <div className="px-3 py-2.5 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground/60">
-            New Decision Point
-          </span>
-          <button onClick={onCancel} className="w-4 h-4 flex items-center justify-center rounded hover:bg-secondary">
-            <X className="w-3 h-3 text-muted-foreground" />
-          </button>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-            Description
-          </label>
-          <input
-            type="text"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="What does the learner do here?"
-            autoFocus
-            className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-            Leads to
-          </label>
-          <select
-            value={targetId}
-            onChange={(e) => setTargetId(e.target.value)}
-            className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 transition-all"
-          >
-            <option value="">Select target…</option>
-            <optgroup label="Steps">
-              {availableTargets
-                .filter((t) => t.group === "Steps")
-                .map((t) => (
-                  <option key={t.id} value={t.id}>{t.label}</option>
-                ))}
-            </optgroup>
-            <optgroup label="Outcomes">
-              {availableTargets
-                .filter((t) => t.group === "Outcomes")
-                .map((t) => (
-                  <option key={t.id} value={t.id}>{t.label}</option>
-                ))}
-            </optgroup>
-          </select>
-        </div>
-
-        <button
-          onClick={handleAdd}
-          disabled={!label.trim() || !targetId}
-          className="w-full py-1.5 rounded-md text-[11px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{
-            background: "hsl(var(--primary))",
-            color: "hsl(var(--primary-foreground))",
-          }}
-        >
-          Add Decision Point
-        </button>
-      </div>
-    </div>
-  );
-};
 
 // ── Evaluation section (authoring only; fixed competency list) ───
 const EvaluationSection = ({
@@ -846,16 +620,17 @@ export const StepDetailPanel = ({
   onDeletePath,
   onUpdateTask,
   onAddTask,
-  onAddPathCondition,
   onDeleteTask,
   onUpdatePersona,
   onUpdateStep,
   onSetPathTarget,
+  onClearPathTarget,
+  onCreateOutcomeAndLink,
+  onCreateStepAndLink,
   onUpdateEvaluation,
   onClearEvaluation,
   onAddPersonaToCatalog,
 }: StepDetailPanelProps) => {
-  const [showAddPath, setShowAddPath] = useState(false);
   const [justAddedTaskId, setJustAddedTaskId] = useState<string | null>(null);
   const [addingCharacter, setAddingCharacter] = useState(false);
   const [newCharName, setNewCharName] = useState("");
@@ -873,17 +648,20 @@ export const StepDetailPanel = ({
     const newTask: ScenarioTask = {
       id: newId,
       label: "",
-      required: true,
-      hidden: false,
+      actionType: "chat",
     };
     setJustAddedTaskId(newId);
     onAddTask(step.id, newTask);
   };
 
-  const handleAddPath = (path: ScenarioPath) => {
+  const handleAddBlankPath = () => {
     if (!step) return;
-    onAddPath(step.id, path);
-    setShowAddPath(false);
+    const newPath: ScenarioPath = {
+      id: `path-${stepIndex + 1}-new-${Date.now()}`,
+      label: "Condition",
+      prerequisite: "",
+    };
+    onAddPath(step.id, newPath);
   };
 
   useEffect(() => {
@@ -945,7 +723,7 @@ export const StepDetailPanel = ({
                 <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${flowBadgeStyle[step.flowType]}`}>
                   {step.flowType}
                 </span>
-                {step.resource && (
+                {step.resource && step.type !== "chat" && step.type !== "radio" && (
                   <>
                     <span className="text-muted-foreground/30 text-[9px]">·</span>
                     <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
@@ -1300,8 +1078,33 @@ export const StepDetailPanel = ({
               </>
             )}
 
-            {/* Resource — for non-document types */}
-            {step.type !== "document" && (
+            {/* Message Description — for chat & radio modalities */}
+            {(step.type === "chat" || step.type === "radio") && (
+              <>
+                <SectionHeader label="Description" />
+                <div className="px-4 pb-3">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                      {step.type === "chat" ? "Nature of the Chat Message" : "Nature of the Radio Message"}
+                    </label>
+                    <textarea
+                      value={step.messageDescription ?? ""}
+                      onChange={(e) => onUpdateStep(step.id, { messageDescription: e.target.value || undefined })}
+                      placeholder={
+                        step.type === "chat"
+                          ? "Describe what this chat exchange is about…"
+                          : "Describe what this radio message is about…"
+                      }
+                      rows={3}
+                      className="w-full text-[11px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all resize-none"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Resource — for video modality only */}
+            {step.type === "video" && (
               <>
                 <SectionHeader label="Resource" />
                 <div className="px-4 pb-3">
@@ -1359,10 +1162,8 @@ export const StepDetailPanel = ({
                 key={task.id}
                 task={task}
                 stepId={step.id}
-                stepIndex={stepIndex}
-                allTasks={step.tasks ?? []}
+                resources={resources}
                 onUpdateTask={onUpdateTask}
-                onAddTask={onAddTask}
                 onDeleteTask={onDeleteTask}
                 autoFocus={task.id === justAddedTaskId}
                 onAutoFocusDone={() => setJustAddedTaskId(null)}
@@ -1370,38 +1171,27 @@ export const StepDetailPanel = ({
             ))}
             <AddButton label="Add task" onClick={handleAddTask} />
 
-            {/* Decision Points */}
-            <SectionHeader label="Decision Points" count={step.paths?.length ?? 0} />
-            <div className="px-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {/* Conditions — evaluated in order, first match wins */}
+            <SectionHeader label="Conditions" count={step.paths?.length ?? 0} />
+            <div className="px-4 space-y-3 pb-2">
               {(step.paths ?? []).map((path) => (
-                <PathRow
+                <ConditionCard
                   key={path.id}
                   path={path}
                   step={step}
-                  stepIndex={stepIndex}
                   allSteps={allSteps}
                   outcomeNodes={outcomeNodes}
+                  resources={resources}
                   onUpdatePath={onUpdatePath}
                   onDeletePath={onDeletePath}
                   onSetPathTarget={onSetPathTarget}
-                  onAddTask={onAddTask}
-                  onAddPathCondition={onAddPathCondition}
-                  onUpdateTask={onUpdateTask}
+                  onClearPathTarget={onClearPathTarget}
+                  onCreateOutcomeAndLink={onCreateOutcomeAndLink}
+                  onCreateStepAndLink={onCreateStepAndLink}
                 />
               ))}
             </div>
-            {showAddPath ? (
-              <AddPathForm
-                step={step}
-                stepIndex={stepIndex}
-                allSteps={allSteps}
-                outcomeNodes={outcomeNodes}
-                onAdd={handleAddPath}
-                onCancel={() => setShowAddPath(false)}
-              />
-            ) : (
-              <AddButton label="Add decision point" onClick={() => setShowAddPath(true)} />
-            )}
+            <AddButton label="Add condition" onClick={handleAddBlankPath} />
 
             {/* Evaluation */}
             <SectionHeader label="Evaluation" />
