@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from "react";
 import { OutcomeType, NodeType, ScenarioStep } from "@/types/scenario";
 import {
   Plus,
-  FilePlus2,
   Target,
   Timer,
   Save,
@@ -14,7 +13,6 @@ import {
 
 interface ScenarioCreationToolbarProps {
   hasScenario: boolean;
-  onNewScenario: (title: string, description: string) => void;
   onAddStep: (type: NodeType) => void;
   onAddOutcome: (type: OutcomeType) => void;
   onAddTimer: (timeoutMs: number, targetStepId: string) => void;
@@ -40,7 +38,6 @@ const outcomeButtons: { type: OutcomeType; label: string; color: string; hoverBg
 
 export const ScenarioCreationToolbar = ({
   hasScenario,
-  onNewScenario,
   onAddStep,
   onAddOutcome,
   onAddTimer,
@@ -88,17 +85,6 @@ export const ScenarioCreationToolbar = ({
 
   return (
     <div className="w-full px-4 py-1.5 border-b border-border bg-background flex items-center gap-2 flex-wrap">
-      {/* New Scenario */}
-      <button
-        onClick={() => onNewScenario("Untitled Scenario", "")}
-        className={`${btnBase} border-primary/40 bg-primary/5 text-primary hover:bg-primary/10`}
-      >
-        <FilePlus2 className="w-3.5 h-3.5" />
-        New Scenario
-      </button>
-
-      <div className="w-px h-5 bg-border mx-0.5" />
-
       {/* Add Step — with modality dropdown */}
       <div className="relative" ref={stepDropdownRef}>
         <button

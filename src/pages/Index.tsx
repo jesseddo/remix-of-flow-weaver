@@ -12,8 +12,6 @@ import { validateScenario } from "@/utils/scenarioValidation";
 import { ScenarioData } from "@/types/scenario";
 import { Download, Library, Play, ArrowLeft } from "lucide-react";
 
-export type DisplayMode = "steps" | "grouped" | "modal";
-
 const WALKTHROUGH_DOCK_INSET_PX = 340;
 
 const Index = () => {
@@ -31,7 +29,6 @@ const Index = () => {
     [currentModule, scenarioId]
   );
 
-  const [displayMode, setDisplayMode] = useState<DisplayMode>("steps");
 
   const handleScenarioChange = useCallback(
     (updated: ScenarioData) => {
@@ -100,13 +97,6 @@ const Index = () => {
     setWalkthroughHighlightId(id);
   }, []);
 
-  const handleNewScenario = useCallback(
-    (title: string, description: string) => {
-      editor.createBlankScenario(title, description);
-    },
-    [editor]
-  );
-
   const handleExport = useCallback(() => {
     if (moduleId) {
       moduleCtx.exportModule(moduleId);
@@ -153,9 +143,7 @@ const Index = () => {
                 <h1 className="text-sm font-bold text-foreground whitespace-nowrap">{editor.data.title}</h1>
               )}
               <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                {displayMode === "modal"
-                  ? `${totalNodes} nodes · ${steps.length} steps · ${outcomeNodes.length} outcomes`
-                  : `${1 + outcomeNodes.length} nodes · ${steps.length} steps`}
+                {totalNodes} nodes · {steps.length} steps · {outcomeNodes.length} outcomes
               </span>
               <ScenarioMetadataPopover data={editor.data} />
             </div>
@@ -168,29 +156,6 @@ const Index = () => {
           <div className="flex-1" />
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Display mode toggle */}
-            <div className="flex rounded-lg border border-border bg-background shadow-sm overflow-hidden">
-              {(
-                [
-                  ["steps", "Steps"],
-                  ["grouped", "Grouped"],
-                  ["modal", "Modal"],
-                ] as const
-              ).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  onClick={() => setDisplayMode(mode)}
-                  className={`px-3 py-1 text-[11px] font-medium transition-colors ${
-                    displayMode === mode
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
             {/* Library toggle */}
             <button
               onClick={() => setLibraryOpen((v) => !v)}
@@ -236,7 +201,6 @@ const Index = () => {
       {/* Creation Toolbar */}
       <ScenarioCreationToolbar
         hasScenario={!!editor.data}
-        onNewScenario={handleNewScenario}
         onAddStep={(type) => editor.addNewStep(type)}
         onAddOutcome={editor.addOutcomeNode}
         onAddTimer={(timeoutMs, targetStepId) => {
@@ -262,7 +226,6 @@ const Index = () => {
           <NodeCanvas
             key={scenarioId ?? ""}
             scenario={editor.data}
-            displayMode={displayMode}
             selectedStepId={walkthroughOpen ? walkthroughHighlightId : editor.selectedStepId}
             onSelectStep={walkthroughOpen ? undefined : editor.setSelectedStepId}
             validationWarnings={validationWarnings}

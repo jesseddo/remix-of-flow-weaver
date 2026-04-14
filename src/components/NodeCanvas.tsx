@@ -1,15 +1,12 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
-import { ScenarioData, ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer } from "@/types/scenario";
-import { ScenarioCard, OutcomeCard, ModalStepCard, GlobalTimerCard } from "./NodeCard";
-import FlowConnections from "./FlowConnections";
+import { ScenarioData, OutcomeNode, ScenarioStep, GlobalTimer } from "@/types/scenario";
+import { OutcomeCard, ModalStepCard, GlobalTimerCard } from "./NodeCard";
 import ModalFlowConnections from "./ModalFlowConnections";
-import type { DisplayMode } from "@/pages/Index";
 import type { ValidationWarning } from "@/utils/scenarioValidation";
 import { stepEvaluationHasContent } from "@/data/evaluationCompetencies";
 
 interface NodeCanvasProps {
   scenario: ScenarioData;
-  displayMode: DisplayMode;
   selectedStepId?: string | null;
   onSelectStep?: (stepId: string | null) => void;
   validationWarnings?: ValidationWarning[];
@@ -19,8 +16,6 @@ interface NodeCanvasProps {
   onDeleteOutcome?: (outcomeId: string) => void;
   onDeleteTimer?: () => void;
 }
-
-type DraggableNode = ScenarioNode | OutcomeNode;
 
 // ─────────────────────────────────────────────────────────
 // DAG layout helpers for Modal Steps view
@@ -349,7 +344,6 @@ function directOutgoingEdgeKeys(stepId: string, steps: ScenarioStep[]): Set<stri
 
 const NodeCanvas = ({
   scenario,
-  displayMode,
   selectedStepId,
   onSelectStep,
   validationWarnings,
@@ -365,28 +359,7 @@ const NodeCanvas = ({
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(0.75);
 
-  // Standard mode state — synced from prop, preserving drag positions
-  const [scenarioNode, setScenarioNode] = useState<ScenarioNode>(scenario.scenarioNode);
-  const [outcomeNodes, setOutcomeNodes] = useState<OutcomeNode[]>(scenario.outcomeNodes);
-
-  useEffect(() => {
-    setScenarioNode((prev) => ({
-      ...scenario.scenarioNode,
-      position: prev.position,
-    }));
-  }, [scenario.scenarioNode]);
-
-  useEffect(() => {
-    setOutcomeNodes((prev) => {
-      const posMap = new Map(prev.map((n) => [n.id, n.position]));
-      return scenario.outcomeNodes.map((n) => ({
-        ...n,
-        position: posMap.get(n.id) ?? n.position,
-      }));
-    });
-  }, [scenario.outcomeNodes]);
-
-  // Modal mode: position map
+  // Position map for modal layout
   const computedModalPositions = useMemo(
     () => computeModalPositions(
       scenario.scenarioNode.steps ?? [],
@@ -444,15 +417,15 @@ const NodeCanvas = ({
 
   // Forward-path highlight: edges/steps reachable FROM the selected step (edit mode)
   const forwardPathData = useMemo(() => {
-    if (!selectedStepId || displayMode !== "modal" || walkthroughMode) return null;
+    if (!selectedStepId || walkthroughMode) return null;
     return computeForwardPaths(selectedStepId, steps);
-  }, [selectedStepId, steps, displayMode, walkthroughMode]);
+  }, [selectedStepId, steps, walkthroughMode]);
 
   /** Walkthrough: only edges leaving the current step (causal clarity). */
   const walkthroughEdgeKeys = useMemo(() => {
-    if (!walkthroughMode || !selectedStepId || displayMode !== "modal") return null;
+    if (!walkthroughMode || !selectedStepId) return null;
     return directOutgoingEdgeKeys(selectedStepId, steps);
-  }, [walkthroughMode, selectedStepId, displayMode, steps]);
+  }, [walkthroughMode, selectedStepId, steps]);
 
   const modalSpotlightEdgeKeys =
     spotlightData?.reachableEdgeKeys ?? walkthroughEdgeKeys ?? forwardPathData?.reachableEdgeKeys;
@@ -470,9 +443,9 @@ const NodeCanvas = ({
     }
   }, [selectedStepId]);
 
-  // ─── Auto-pan in modal: walkthrough centers node above dock; edit mode keeps node in view ───
+  // ─── Auto-pan: walkthrough centers node above dock; edit mode keeps node in view ───
   useEffect(() => {
-    if (!selectedStepId || displayMode !== "modal") return;
+    if (!selectedStepId) return;
     const pos = modalPositions.get(selectedStepId);
     if (!pos || !containerRef.current) return;
 
@@ -498,7 +471,7 @@ const NodeCanvas = ({
       setPan({ ...currentPan, x: currentPan.x - shift });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStepId, displayMode, walkthroughMode, walkthroughBottomInset, modalPositions, steps]);
+  }, [selectedStepId, walkthroughMode, walkthroughBottomInset, modalPositions, steps]);
 
   // ─── Pan ───
   const handleCanvasMouseDown = useCallback(
@@ -521,27 +494,17 @@ const NodeCanvas = ({
         const newX = (e.clientX - pan.x) / zoom - dragOffset.x;
         const newY = (e.clientY - pan.y) / zoom - dragOffset.y;
 
-        if (displayMode === "modal") {
-          setModalPositions((prev) => {
-            const next = new Map(prev);
-            next.set(draggingNodeId, { x: newX, y: newY });
-            return next;
-          });
-        } else if (draggingNodeId === scenarioNode.id) {
-          setScenarioNode((prev) => ({ ...prev, position: { x: newX, y: newY } }));
-        } else {
-          setOutcomeNodes((prev) =>
-            prev.map((n) =>
-              n.id === draggingNodeId ? { ...n, position: { x: newX, y: newY } } : n,
-            ),
-          );
-        }
+        setModalPositions((prev) => {
+          const next = new Map(prev);
+          next.set(draggingNodeId, { x: newX, y: newY });
+          return next;
+        });
         return;
       }
       if (!isPanning) return;
       setPan({ x: e.clientX - startPos.x, y: e.clientY - startPos.y });
     },
-    [isPanning, startPos, draggingNodeId, dragOffset, pan, zoom, scenarioNode.id, displayMode],
+    [isPanning, startPos, draggingNodeId, dragOffset, pan, zoom],
   );
 
   // ─── Mouse up: drag guard → select step if it was a click ───
@@ -558,8 +521,7 @@ const NodeCanvas = ({
             onSelectStep(draggingNodeId === selectedStepId ? null : draggingNodeId);
           }
 
-          // Spotlight for outcome clicks in modal mode
-          if (displayMode === "modal" && modalOutcomeIds.has(draggingNodeId)) {
+          if (modalOutcomeIds.has(draggingNodeId)) {
             setSpotlightOutcomeId((prev) =>
               prev === draggingNodeId ? null : draggingNodeId
             );
@@ -569,7 +531,7 @@ const NodeCanvas = ({
       setDraggingNodeId(null);
       isDragRef.current = false;
     },
-    [draggingNodeId, steps, selectedStepId, onSelectStep, displayMode, modalOutcomeIds],
+    [draggingNodeId, steps, selectedStepId, onSelectStep, modalOutcomeIds],
   );
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -577,21 +539,7 @@ const NodeCanvas = ({
     setZoom((z) => Math.min(2, Math.max(0.3, z - e.deltaY * 0.001)));
   }, []);
 
-  // ─── Node drag start (standard mode) ───
-  const handleNodeMouseDown = useCallback(
-    (node: DraggableNode, e: React.MouseEvent) => {
-      e.stopPropagation();
-      dragStartClientRef.current = { x: e.clientX, y: e.clientY };
-      isDragRef.current = false;
-      const canvasX = (e.clientX - pan.x) / zoom;
-      const canvasY = (e.clientY - pan.y) / zoom;
-      setDragOffset({ x: canvasX - node.position.x, y: canvasY - node.position.y });
-      setDraggingNodeId(node.id);
-    },
-    [pan, zoom],
-  );
-
-  // ─── Node drag start (modal mode) ───
+  // ─── Node drag start ───
   const handleModalNodeMouseDown = useCallback(
     (nodeId: string, e: React.MouseEvent) => {
       e.stopPropagation();
@@ -613,35 +561,18 @@ const NodeCanvas = ({
   }, [onSelectStep]);
 
   // ─── Canvas size ───
-  const SCENARIO_CARD_W = 500;
-  const OUTCOME_CARD_H = 260;
-  const STEP_HEIGHT_ESTIMATE = 220;
-
   const canvasSize = useMemo(() => {
-    if (displayMode === "modal") {
-      const stepById = new Map(steps.map((s) => [s.id, s]));
-      let maxX = 0;
-      let maxY = 0;
-      for (const [id, pos] of modalPositions) {
-        const step = stepById.get(id);
-        const cardH = step ? estimateStepCardHeight(step) : MODAL_OUTCOME_H;
-        maxX = Math.max(maxX, pos.x + MODAL_STEP_W);
-        maxY = Math.max(maxY, pos.y + cardH);
-      }
-      return { width: maxX + 200, height: maxY + 200 };
+    const stepById = new Map(steps.map((s) => [s.id, s]));
+    let maxX = 0;
+    let maxY = 0;
+    for (const [id, pos] of modalPositions) {
+      const step = stepById.get(id);
+      const cardH = step ? estimateStepCardHeight(step) : MODAL_OUTCOME_H;
+      maxX = Math.max(maxX, pos.x + MODAL_STEP_W);
+      maxY = Math.max(maxY, pos.y + cardH);
     }
-    const scenarioCardHeight =
-      120 + (scenarioNode.steps?.length ?? 0) * STEP_HEIGHT_ESTIMATE;
-    const maxY = Math.max(
-      scenarioNode.position.y + scenarioCardHeight,
-      ...outcomeNodes.map((n) => n.position.y + OUTCOME_CARD_H),
-    );
-    const maxX = Math.max(
-      scenarioNode.position.x + SCENARIO_CARD_W,
-      ...outcomeNodes.map((n) => n.position.x + 220),
-    );
     return { width: maxX + 200, height: maxY + 200 };
-  }, [displayMode, modalPositions, scenarioNode, outcomeNodes]);
+  }, [modalPositions, steps]);
 
   const globalTimer = scenario.globalTimer;
 
@@ -670,8 +601,8 @@ const NodeCanvas = ({
       onWheel={handleWheel}
       onClick={handleCanvasClick}
     >
-      {/* Spotlight pill bar — modal mode only */}
-      {displayMode === "modal" && scenario.outcomeNodes.length > 0 && (
+      {/* Spotlight pill bar */}
+      {scenario.outcomeNodes.length > 0 && (
         <div className="absolute top-3 left-4 right-4 z-10 flex items-center gap-2 pointer-events-none">
           <span className="text-[10px] text-muted-foreground font-medium pointer-events-auto">Spotlight path to:</span>
           <div className="flex items-center gap-1.5 pointer-events-auto">
@@ -726,120 +657,82 @@ const NodeCanvas = ({
           height: canvasSize.height,
         }}
       >
-        {displayMode === "modal" ? (
-          <>
-            <ModalFlowConnections
-              steps={steps}
-              outcomeNodes={modalOutcomeNodes}
-              spotlightEdgeKeys={modalSpotlightEdgeKeys}
-              globalTimer={globalTimer}
-            />
+        <ModalFlowConnections
+          steps={steps}
+          outcomeNodes={modalOutcomeNodes}
+          spotlightEdgeKeys={modalSpotlightEdgeKeys}
+          globalTimer={globalTimer}
+        />
 
-            {steps.map((step, idx) => {
-              const pos = modalPositions.get(step.id) ?? { x: 0, y: 0 };
-              const isStepSelected = selectedStepId === step.id || selectedNodeId === step.id;
+        {steps.map((step, idx) => {
+          const pos = modalPositions.get(step.id) ?? { x: 0, y: 0 };
+          const isStepSelected = selectedStepId === step.id || selectedNodeId === step.id;
 
-              const stepSpotlight = spotlightData
-                ? {
-                    dimmed: !spotlightData.reachableStepIds.has(step.id),
-                    fadedDpIndices: new Set(
-                      (step.paths ?? [])
-                        .map((_, i) => i)
-                        .filter(
-                          (i) =>
-                            !spotlightData.reachableEdgeKeys.has(`${step.id}-${i}`),
-                        ),
+          const stepSpotlight = spotlightData
+            ? {
+                dimmed: !spotlightData.reachableStepIds.has(step.id),
+                fadedDpIndices: new Set(
+                  (step.paths ?? [])
+                    .map((_, i) => i)
+                    .filter(
+                      (i) =>
+                        !spotlightData.reachableEdgeKeys.has(`${step.id}-${i}`),
                     ),
-                  }
-                : undefined;
-
-              return (
-                <ModalStepCard
-                  key={step.id}
-                  step={step}
-                  stepIndex={idx}
-                  position={pos}
-                  isSelected={isStepSelected}
-                  onMouseDown={(e) => handleModalNodeMouseDown(step.id, e)}
-                  spotlight={stepSpotlight}
-                  hasWarning={warningNodeIds?.has(step.id)}
-                  walkthroughActive={walkthroughMode && selectedStepId === step.id}
-                  onDelete={onDeleteStep}
-                  resources={scenario.resources}
-                />
-              );
-            })}
-
-            {modalOutcomeNodes.map((node) => {
-              const spotlightState = spotlightData
-                ? node.id === spotlightData.outcomeId
-                  ? "target"
-                  : "dimmed"
-                : "none";
-
-              return (
-                <OutcomeCard
-                  key={node.id}
-                  node={node}
-                  isSelected={selectedNodeId === node.id}
-                  onMouseDown={(e) => handleModalNodeMouseDown(node.id, e)}
-                  onClick={(e) => e.stopPropagation()}
-                  spotlightState={spotlightState}
-                  onDelete={onDeleteOutcome}
-                />
-              );
-            })}
-
-            {globalTimer && (() => {
-              const pos = modalPositions.get(globalTimer.id) ?? { x: 0, y: 0 };
-              return (
-                <GlobalTimerCard
-                  key={globalTimer.id}
-                  timer={globalTimer}
-                  position={pos}
-                  isSelected={selectedNodeId === globalTimer.id}
-                  onMouseDown={(e) => handleModalNodeMouseDown(globalTimer.id, e)}
-                  onClick={(e) => e.stopPropagation()}
-                  onDelete={onDeleteTimer}
-                />
-              );
-            })()}
-          </>
-        ) : (
-          <>
-            <FlowConnections
-              scenarioNode={scenarioNode}
-              outcomeNodes={outcomeNodes}
-              selectedStepIndex={
-                selectedStepId != null
-                  ? (scenario.scenarioNode.steps?.findIndex((s) => s.id === selectedStepId) ?? null)
-                  : null
+                ),
               }
-            />
+            : undefined;
 
-            <ScenarioCard
-              node={scenarioNode}
-              isSelected={selectedNodeId === scenarioNode.id}
-              onMouseDown={(e) => handleNodeMouseDown(scenarioNode, e)}
+          return (
+            <ModalStepCard
+              key={step.id}
+              step={step}
+              stepIndex={idx}
+              position={pos}
+              isSelected={isStepSelected}
+              onMouseDown={(e) => handleModalNodeMouseDown(step.id, e)}
+              spotlight={stepSpotlight}
+              hasWarning={warningNodeIds?.has(step.id)}
+              walkthroughActive={walkthroughMode && selectedStepId === step.id}
+              onDelete={onDeleteStep}
+              resources={scenario.resources}
+            />
+          );
+        })}
+
+        {modalOutcomeNodes.map((node) => {
+          const spotlightState = spotlightData
+            ? node.id === spotlightData.outcomeId
+              ? "target"
+              : "dimmed"
+            : "none";
+
+          return (
+            <OutcomeCard
+              key={node.id}
+              node={node}
+              isSelected={selectedNodeId === node.id}
+              onMouseDown={(e) => handleModalNodeMouseDown(node.id, e)}
               onClick={(e) => e.stopPropagation()}
-              displayMode={displayMode}
-              selectedStepId={selectedStepId}
-              onSelectStep={onSelectStep}
-              warningNodeIds={warningNodeIds}
+              spotlightState={spotlightState}
+              onDelete={onDeleteOutcome}
             />
+          );
+        })}
 
-            {outcomeNodes.map((node) => (
-              <OutcomeCard
-                key={node.id}
-                node={node}
-                isSelected={selectedNodeId === node.id}
-                onMouseDown={(e) => handleNodeMouseDown(node, e)}
-                onClick={(e) => e.stopPropagation()}
-                onDelete={onDeleteOutcome}
-              />
-            ))}
-          </>
-        )}
+        {globalTimer && (() => {
+          const pos = modalPositions.get(globalTimer.id) ?? { x: 0, y: 0 };
+          return (
+            <GlobalTimerCard
+              key={globalTimer.id}
+              timer={globalTimer}
+              position={pos}
+              isSelected={selectedNodeId === globalTimer.id}
+              onMouseDown={(e) => handleModalNodeMouseDown(globalTimer.id, e)}
+              onClick={(e) => e.stopPropagation()}
+              onDelete={onDeleteTimer}
+            />
+          );
+        })()}
       </div>
     </div>
   );

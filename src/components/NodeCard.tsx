@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { ScenarioNode, OutcomeNode, ScenarioStep, GlobalTimer, StepEvaluation, ScenarioPath } from "@/types/scenario";
+import { OutcomeNode, ScenarioStep, GlobalTimer, StepEvaluation } from "@/types/scenario";
 import type { ScenarioResource, ScenarioTask } from "@/types/scenario";
 import { taskEditorDisplay } from "@/utils/taskDisplay";
 import { stepEvaluationHasContent } from "@/data/evaluationCompetencies";
-import { MessageSquare, Radio, FileText, Video, User, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, ChevronDown, Timer, Clock, X } from "lucide-react";
+import { MessageSquare, Radio, FileText, Video, User, CircleCheck as CheckCircle2, Circle as XCircle, AlertTriangle, Timer, Clock, X } from "lucide-react";
 
 // ── Inline confirmation popover ──────────────────────────────────
 const DeleteConfirmPopover = ({
@@ -40,7 +40,6 @@ const DeleteConfirmPopover = ({
   </div>
 );
 import type { OutcomeType } from "@/types/scenario";
-import type { DisplayMode } from "@/pages/Index";
 
 const outcomeStyles: Record<OutcomeType, {
   bg: string;
@@ -113,13 +112,6 @@ const typeConfig: Record<
   video: { icon: Video, colorClass: "bg-node-video", label: "Video" },
 };
 
-const flowBadge: Record<string, string> = {
-  conditional: "bg-node-warning/20 text-node-warning",
-  gated: "bg-node-document/20 text-node-document",
-  interruption: "bg-destructive/20 text-destructive",
-  linear: "bg-muted text-muted-foreground",
-};
-
 const TASK_SHORT_LABELS: Record<string, string> = {
   request_document: "Request",
   review_document: "Review",
@@ -164,17 +156,6 @@ function taskDescriptionParts(
   };
 }
 
-interface ScenarioCardProps {
-  node: ScenarioNode;
-  isSelected: boolean;
-  onMouseDown: (e: React.MouseEvent) => void;
-  onClick: (e: React.MouseEvent) => void;
-  displayMode: DisplayMode;
-  selectedStepId?: string | null;
-  onSelectStep?: (stepId: string | null) => void;
-  warningNodeIds?: Set<string>;
-}
-
 interface OutcomeCardProps {
   node: OutcomeNode;
   isSelected: boolean;
@@ -183,188 +164,6 @@ interface OutcomeCardProps {
   spotlightState?: "target" | "dimmed" | "none";
   onDelete?: (outcomeId: string) => void;
 }
-
-const StepRow = ({
-  step,
-  index,
-  isSelected,
-  onSelectStep,
-  hasWarning,
-}: {
-  step: ScenarioStep;
-  index: number;
-  isSelected?: boolean;
-  onSelectStep?: (stepId: string | null) => void;
-  hasWarning?: boolean;
-}) => {
-  const cfg = typeConfig[step.type];
-  const Icon = cfg.icon;
-
-  return (
-    <div className="relative">
-      <div
-        className={`bg-card rounded-lg p-3 space-y-2 hover:bg-secondary/30 transition-colors ${
-          onSelectStep ? "cursor-pointer" : ""
-        } ${isSelected ? "ring-2 ring-primary" : ""}`}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (onSelectStep) {
-            onSelectStep(isSelected ? null : step.id);
-          }
-        }}
-      >
-          <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 flex-1">
-            <div className="relative shrink-0">
-              <div
-                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-                style={{ background: `hsl(var(--node-${step.type}))`, color: "white" }}
-              >
-                {index + 1}
-              </div>
-              {hasWarning && (
-                <div
-                  className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center"
-                  style={{ background: "hsl(38, 92%, 50%)", boxShadow: "0 0 0 1.5px white" }}
-                  title="Validation warning: this step has a configuration issue"
-                >
-                  <AlertTriangle className="w-2 h-2 text-white" />
-                </div>
-              )}
-            </div>
-            <div className="flex-1">
-              <h4 className="font-semibold text-xs text-card-foreground leading-tight">
-                {step.title}
-              </h4>
-              {step.persona && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">{step.persona}</p>
-              )}
-            </div>
-          </div>
-          <span className="flex items-center gap-1 text-[10px] font-medium shrink-0" style={{ color: `hsl(var(--node-${step.type}))` }}>
-            <Icon className="w-3 h-3" />
-            {cfg.label}
-          </span>
-        </div>
-
-        <p className="text-[11px] text-muted-foreground leading-relaxed pl-8">
-          {step.description}
-        </p>
-
-        {step.paths && step.paths.length > 0 && (
-          <div className="space-y-1 pl-8">
-            {step.paths.map((dp, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 text-[10px] text-card-foreground bg-secondary/60 rounded-md px-2 py-1 relative"
-              >
-                <User className="w-2.5 h-2.5 text-primary shrink-0" />
-                <span className="leading-tight text-[10px]">{dp.label}</span>
-                <span className="ml-auto text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded bg-primary/10 text-primary">
-                  condition
-                </span>
-                {dp.connections && dp.connections.length > 0 && (() => {
-                  const dotType = dp.connections[0].type;
-                  const dot = connectionDotColor(dotType);
-                  return (
-                    <div
-                      data-dp-id={`${index}-${i}`}
-                      className="absolute -right-[10px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-background"
-                      style={{
-                        background: dot.bg,
-                        boxShadow: `0 0 0 2px ${dot.shadow}`,
-                      }}
-                    />
-                  );
-                })()}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex items-center gap-2 flex-wrap pl-8">
-          <span className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded-full ${flowBadge[step.flowType]}`}>
-            {step.flowType}
-          </span>
-          {step.tags.map((tag) => (
-            <span
-              key={tag}
-              className="text-[9px] px-1.5 py-0.5 rounded-md bg-secondary/50 text-secondary-foreground"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {index < (step.paths?.length || 0) - 1 && (
-        <div className="flex justify-center py-1">
-          <ChevronDown className="w-4 h-4 text-muted-foreground/50" />
-        </div>
-      )}
-    </div>
-  );
-};
-
-const GroupedTriggersView = ({ node }: { node: ScenarioNode }) => {
-  const [hoveredStepIndex, setHoveredStepIndex] = useState<number | null>(null);
-
-  return (
-    <div className="p-4">
-      {node.steps?.map((step, stepIndex) => {
-        const triggers = step.paths;
-        if (!triggers || triggers.length === 0) return null;
-
-        const isStepHovered = hoveredStepIndex === stepIndex;
-
-        return (
-          <div
-            key={step.id}
-            className="transition-all duration-150"
-            style={{
-              background: isStepHovered ? "hsl(var(--primary) / 0.05)" : "transparent",
-              boxShadow: isStepHovered ? "inset 0 0 0 1px hsl(var(--primary) / 0.12)" : "none",
-              borderRadius: "0.5rem",
-              padding: "2px",
-              margin: "-2px",
-              marginBottom: "2px",
-            }}
-          >
-            {triggers.map((dp: ScenarioPath, dpIndex: number) => (
-              <div
-                key={dpIndex}
-                className="flex items-center gap-2 text-[10px] text-card-foreground bg-secondary/60 rounded-md px-2 py-1.5 relative mb-1 last:mb-0"
-                onMouseEnter={() => setHoveredStepIndex(stepIndex)}
-                onMouseLeave={() => setHoveredStepIndex(null)}
-              >
-                <User className="w-2.5 h-2.5 text-primary shrink-0" />
-                <span className="leading-tight text-[10px]">{dp.label}</span>
-                <span className="ml-auto text-[8px] font-medium uppercase shrink-0 px-1 py-0.5 rounded bg-primary/10 text-primary">
-                  condition
-                </span>
-                {dp.connections && dp.connections.length > 0 && (() => {
-                  const dotType = dp.connections[0].type;
-                  const dot = connectionDotColor(dotType);
-                  return (
-                    <div
-                      data-dp-id={`${stepIndex}-${dpIndex}`}
-                      className="absolute -right-[10px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-background"
-                      style={{
-                        background: dot.bg,
-                        boxShadow: `0 0 0 2px ${dot.shadow}`,
-                      }}
-                    />
-                  );
-                })()}
-              </div>
-            ))}
-          </div>
-        );
-      })}
-    </div>
-  );
-};
 
 function formatTimeoutMs(ms: number): string {
   const totalSeconds = Math.round(ms / 1000);
@@ -762,56 +561,6 @@ export const GlobalTimerCard = ({
           boxShadow: "0 0 0 2px hsla(265, 65%, 55%, 0.35)",
         }}
       />
-    </div>
-  );
-};
-
-export const ScenarioCard = ({ node, isSelected, onMouseDown, onClick, displayMode, selectedStepId, onSelectStep, warningNodeIds }: ScenarioCardProps) => {
-  const borderColor = isSelected
-    ? "ring-2 ring-primary"
-    : "hover:ring-1 hover:ring-primary/40";
-
-  return (
-    <div
-      className={`w-[500px] rounded-lg bg-background shadow-lg overflow-hidden transition-shadow ${borderColor} cursor-grab active:cursor-grabbing border-2 border-primary/20`}
-      style={{
-        position: "absolute",
-        left: node.position.x,
-        top: node.position.y,
-        zIndex: isSelected ? 10 : 1,
-      }}
-      onMouseDown={onMouseDown}
-      onClick={onClick}
-    >
-      <div className="bg-primary/5 border-b border-primary/20 px-4 py-3">
-        <h3 className="font-bold text-sm text-card-foreground">{node.title}</h3>
-        {node.description && (
-          <p className="text-[11px] text-muted-foreground mt-1">{node.description}</p>
-        )}
-      </div>
-
-      {displayMode === "grouped" ? (
-        <GroupedTriggersView node={node} />
-      ) : (
-        <div className="p-4 space-y-2">
-          {node.steps?.map((step, index) => (
-            <div key={step.id}>
-              <StepRow
-                step={step}
-                index={index}
-                isSelected={selectedStepId === step.id}
-                onSelectStep={onSelectStep}
-                hasWarning={warningNodeIds?.has(step.id)}
-              />
-              {index < (node.steps?.length || 0) - 1 && (
-                <div className="flex justify-center py-2">
-                  <div className="w-0.5 h-4 bg-gradient-to-b from-primary/30 to-primary/10" />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
