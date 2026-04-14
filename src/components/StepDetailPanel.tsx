@@ -397,20 +397,24 @@ const TaskRow = ({
           <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/50 shrink-0 w-20">
             Action
           </label>
-          <select
-            value={task.actionType}
-            onChange={(e) => onUpdateTask(stepId, task.id, { actionType: e.target.value as TaskActionType })}
-            className="flex-1 text-[11px] rounded-md border border-border/50 bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
-            title={TASK_ACTION_TYPES.find((a) => a.value === task.actionType)?.description}
-          >
-            {TASK_ACTION_TYPES.map((a) => (
-              <option key={a.value} value={a.value} title={a.description}>{a.label}</option>
-            ))}
-          </select>
+          <div className="flex-1 relative group/action">
+            <select
+              value={task.actionType}
+              onChange={(e) => onUpdateTask(stepId, task.id, { actionType: e.target.value as TaskActionType })}
+              className="w-full text-[11px] rounded-md border border-border/50 bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
+              title={TASK_ACTION_TYPES.find((a) => a.value === task.actionType)?.description}
+            >
+              {TASK_ACTION_TYPES.map((a) => (
+                <option key={a.value} value={a.value} title={a.description}>{a.label}</option>
+              ))}
+            </select>
+            <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover/action:block">
+              <p className="text-[9px] text-muted-foreground/70 italic leading-snug bg-popover border border-border/60 rounded-md px-2 py-1 shadow-md whitespace-nowrap">
+                {TASK_ACTION_TYPES.find((a) => a.value === task.actionType)?.description}
+              </p>
+            </div>
+          </div>
         </div>
-        <p className="ml-20 pl-2 mt-1 text-[9px] text-muted-foreground/50 italic leading-snug">
-          {TASK_ACTION_TYPES.find((a) => a.value === task.actionType)?.description}
-        </p>
       </div>
 
       {/* Document selector — for document-based actions */}
